@@ -1,3 +1,5 @@
 # 公开契约
 
-预留 M1–M5 的 TypeScript 接口声明。后续从已确认的 public-interface.md 提取，保留全部方法签名，统一导入 shared 中的基础类型，不重复定义或引入 Vue。当前不生成声明代码。
+五份 TypeScript 文件对应 M1–M5，来源为 documentation/docs/public-interface.md。原方法签名和类型不变；基础类型统一从 shared/data-models 导入，不重复定义、不引入 Vue。
+
+这些文件只有契约声明，不是业务模块实现。后续实现通过 implements 或等价的类型约束遵守接口。

@@ -1,6 +1,6 @@
 # Architecture（修订版）
 
-日期：2026-10-26。已按“安装和实现简单”的原则确定第一版约定；本轮仍不进入实现。
+日期：2026-10-26。已按“安装和实现简单”的原则确定第一版约定；Phase 2 基础配置已完成，页面与业务模块按后续阶段逐步实现。
 
 共享 [Data Models](data-models.md) 原样保留；方法及具体约束见 [Public Interface](public-interface.md)。本文件采纳已讨论的推荐方案，不增加后端、数据库、云同步或全局状态框架。
 
@@ -94,7 +94,7 @@ M5 固定 12 列，全量验证、CRLF、正确转义，默认 BOM。第一版�
 
 ## 7. 技术约束与测试
 
-采用 Vue 3、TypeScript strict、Vite、Vitest 作为第一版工具方案。Vue 只负责页面展示和交互；M1–M5 使用独立 TypeScript，不导入 Vue 或直接操作 DOM。语音首先以桌面 Chrome/Edge 为验收目标，实际检查能力；不支持语音时提供手动功能。当前仅确定方案，尚未安装依赖。
+采用 Vue 3、TypeScript strict、Vite、Vitest 作为第一版工具方案。Vue 只负责页面展示和交互；M1–M5 使用独立 TypeScript，不导入 Vue 或直接操作 DOM。语音首先以桌面 Chrome/Edge 为验收目标，实际检查能力；不支持语音时提供手动功能。Phase 2 已使用现有依赖完成类型、测试和构建验证。
 
 离线范围限定为应用已加载后的手动操作及本地记录管理；第一版不支持离线重新打开，不安装 PWA 或 Service Worker 插件。正式数据受浏览器本地存储生命周期约束。
 
@@ -141,13 +141,13 @@ M5 固定 12 列，全量验证、CRLF、正确转义，默认 BOM。第一版�
 
 ## 10. 简单安装与启动方案
 
-- 开发环境只要求 Node.js LTS（包含 npm）和桌面 Chrome 或 Edge；后续项目锁定一个受 Vite/Vitest 支持的具体 Node LTS 版本。
+- 开发环境使用 Node.js 24.22.1（见 .nvmrc，配合 npm）和桌面 Chrome 或 Edge；Phase 2 使用本机已有的该 Node 版本验证，不修改全局 Node 安装。
 - 运行时依赖 Vue 3；开发依赖为 TypeScript、Vite、Vitest 及必要的 Vue 编译、类型检查工具。不引入全局状态框架、UI 组件库或业务解析库。解析、时间、CSV、ID 使用浏览器内置能力和少量本地函数。
-- 后续实现 package.json 和锁文件后，首次开发安装使用 npm ci，启动使用 npm run dev；检查使用 npm test 和 npm run build。当前仓库尚未提供这些脚本，以上是交付要求，不是现在可执行的完成状态。
+- package.json 和锁文件已具备。首次开发安装使用 npm ci，启动使用 npm run dev；检查使用 npm run type-check、npm test 和 npm run build。类型检查覆盖源码、测试及构建配置，当前测试仅覆盖基础层。
 - 最终用户通过固定的 HTTPS 地址访问静态网页，无需安装 Node、应用、数据库或插件。本地开发使用 localhost；不以双击 file:// 文件作为支持方式。
 - 保持页面来源稳定（协议、主机、端口），避免更换地址后看不到原 localStorage 数据。部署不增加后端服务。
 
-本轮不安装依赖、不生成项目代码。data model、公开声明和状态枚举保持不变；原有待定问题已按上述第一版范围关闭。
+Phase 2 已落地共享类型和公开声明，data model、公开方法签名和状态枚举保持不变；业务模块实现留到后续阶段。原有待定问题已按上述第一版范围关闭。
 
 ## 11. 页面要求补充
 
