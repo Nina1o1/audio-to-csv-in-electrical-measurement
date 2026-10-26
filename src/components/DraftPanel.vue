@@ -27,7 +27,7 @@ const measurementRows = [
   <section class="panel draft-panel" :aria-labelledby="`${prefix}-title`">
     <div class="section-heading">
       <h2 :id="`${prefix}-title`">{{ title }}</h2>
-      <span class="status">{{ status }} · Mock</span>
+      <span class="status">{{ status }}</span>
     </div>
     <table class="draft-table">
       <caption class="sr-only">六项质检指标，单位仅为固定说明，不存入数据</caption>
@@ -35,22 +35,22 @@ const measurementRows = [
       <tbody>
         <tr>
           <th scope="row"><label :for="`${prefix}-work-order`">工单号</label></th>
-          <td><input :id="`${prefix}-work-order`" :value="draft.workOrder ?? ''" placeholder="请输入工单号" @input="input('workOrder', $event)" :disabled="disabled" aria-describedby="mock-note"></td>
+          <td><input :id="`${prefix}-work-order`" :value="draft.workOrder ?? ''" placeholder="请输入工单号" @input="input('workOrder', $event)" :disabled="disabled" aria-describedby="manual-note"></td>
           <td class="unit-column">—</td>
         </tr>
         <tr>
           <th scope="row"><label :for="`${prefix}-part-number`">零件号</label></th>
-          <td><input :id="`${prefix}-part-number`" :value="draft.partNumber ?? ''" placeholder="请输入零件号" @input="input('partNumber', $event)" :disabled="disabled" aria-describedby="mock-note"></td>
+          <td><input :id="`${prefix}-part-number`" :value="draft.partNumber ?? ''" placeholder="请输入零件号" @input="input('partNumber', $event)" :disabled="disabled" aria-describedby="manual-note"></td>
           <td class="unit-column">—</td>
         </tr>
         <tr v-for="row in measurementRows" :key="row.field">
           <th scope="row"><label :for="`${prefix}-${row.field}`">{{ row.label }}</label></th>
-          <td><input :id="`${prefix}-${row.field}`" type="number" min="0" step="any" :value="draft[row.field] ?? ''" placeholder="未填写" @input="input(row.field, $event)" :disabled="disabled" :aria-describedby="`mock-note ${prefix}-unit-${row.field}`"></td>
+          <td><input :id="`${prefix}-${row.field}`" type="number" min="0" step="any" :value="draft[row.field] ?? ''" placeholder="未填写" @input="input(row.field, $event)" :disabled="disabled" :aria-describedby="`manual-note ${prefix}-unit-${row.field}`"></td>
           <td :id="`${prefix}-unit-${row.field}`" class="unit-column">{{ row.displayUnit }}</td>
         </tr>
         <tr>
           <th scope="row"><label :for="`${prefix}-result`">检验结果</label></th>
-          <td><select :id="`${prefix}-result`" @change="input('result', $event)" :disabled="disabled" aria-describedby="mock-note">
+          <td><select :id="`${prefix}-result`" @change="input('result', $event)" :disabled="disabled" aria-describedby="manual-note">
             <option value="" :selected="draft.result === null">未选择</option>
             <option value="PASS" :selected="draft.result === 'PASS'">PASS · 合格</option>
             <option value="FAIL" :selected="draft.result === 'FAIL'">FAIL · 不合格</option>
@@ -62,8 +62,8 @@ const measurementRows = [
     <div v-if="showActions" class="panel-footer draft-footer">
       <p class="muted">单位仅作说明；处理、确认或保存中冻结编辑；历史未就绪时禁止保存。</p>
       <div class="actions">
-        <button type="button" class="danger" @click="emit('delete')" :disabled="disabled" aria-describedby="mock-note">删除</button>
-        <button type="button" class="primary" @click="emit('save')" :disabled="disabled || saveDisabled" aria-describedby="mock-note">保存</button>
+        <button type="button" class="danger" @click="emit('delete')" :disabled="disabled" aria-describedby="manual-note">删除</button>
+        <button type="button" class="primary" @click="emit('save')" :disabled="disabled || saveDisabled" aria-describedby="manual-note">保存</button>
       </div>
     </div>
   </section>

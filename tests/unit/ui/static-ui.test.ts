@@ -13,7 +13,7 @@ const emptyDraft: DraftFields = {
 describe('UI layout regression', () => {
   it('renders the required sections in vertical order, with export controls', async () => {
     const html = await renderToString(createSSRApp(App))
-    const sections = ['keywords-title', 'voice-title', 'draft-title', 'history-title', 'mock-title']
+    const sections = ['keywords-title', 'voice-title', 'draft-title', 'history-title']
     const positions = sections.map((id) => html.indexOf(`id="${id}"`))
     expect(positions.every((position) => position >= 0)).toBe(true)
     expect(positions).toEqual([...positions].sort((a, b) => a - b))
@@ -33,31 +33,31 @@ describe('UI layout regression', () => {
     }
   })
 
-  it('labels Mock data and initially gates history while keeping manual input available', async () => {
+  it('initially gates real history while keeping manual input available', async () => {
     const html = await renderToString(createSSRApp(App))
-    expect(html).toContain('非本地数据')
-    expect(html).toContain('不会读取或写入本地存储')
-    expect(html).toContain('Mock：加载中')
+    expect(html).toContain('浏览器本地历史记录')
+    expect(html).toContain('草稿刷新后丢失')
+    expect(html).toContain('历史加载中')
     expect(html).not.toContain('<dialog')
     expect(html).toMatch(/id="draft-work-order"[^>]*>/)
     expect(html.match(/<input id="draft-work-order"[^>]*>/)?.[0]).not.toContain('disabled')
     expect(html).toContain('已确认文本')
     expect(html).toContain('临时文本')
-    expect(html).toContain('Mock 测试工具')
+    expect(html.match(/<button[^>]*>保存<\/button>/)?.[0]).toContain('disabled')
   })
 
-  it('keeps Mock tools collapsed by default, retaining scenarios without obsolete result buttons', async () => {
+  it('removes Mock tools, keeps voice unavailable and gates exports until history is ready', async () => {
     const html = await renderToString(createSSRApp(App))
-    const tools = html.match(/<details class="panel mock-panel"[^>]*>[\s\S]*?<\/details>/)?.[0]
-    expect(tools).toBeDefined()
-    expect(tools?.match(/^<details[^>]*>/)?.[0]).not.toMatch(/\sopen(?:\s|>|=)/)
-    expect(tools).toContain('<summary id="mock-title">Mock 测试工具</summary>')
-    for (const text of ['开始输入', '执行模拟命令', '发送预设实时文本', '返回模拟解析结果', '预设启动失败', '预设解析失败', '明确失败', '结果不确定', '模拟核对结果', '核对保存结果（Mock）']) {
-      expect(tools).toContain(text)
-    }
-    for (const text of ['返回模拟启动结果', '返回模拟保存结果', '取消模拟启动']) {
+    for (const text of ['Mock 测试工具', '执行模拟命令', '返回模拟解析结果', '模拟核对结果']) {
       expect(html).not.toContain(text)
     }
+    for (const text of ['开始监听', '结束录入', '导出选中记录至 CSV', '导出全部记录至 CSV']) {
+      const button = (html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []).find(value => value.includes(text))
+      expect(button).toBeDefined()
+      expect(button).toContain('disabled')
+    }
+    expect(html).not.toContain('CSV 导出尚未接入')
+    expect(html).toContain('导出全部不受筛选限制')
   })
 
   it('freezes draft controls while preserving their values', async () => {

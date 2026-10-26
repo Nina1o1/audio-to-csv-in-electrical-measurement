@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
-defineProps<{ title: string; cancelText: string; confirmText: string }>()
+withDefaults(defineProps<{ title: string; cancelText: string; confirmText: string; description?: string; disabled?: boolean }>(), {
+  description: '请核对当前草稿后确认；选择取消选项可保留草稿。', disabled: false,
+})
 const emit = defineEmits<{ cancel: []; confirm: [] }>()
 const element = ref<HTMLDialogElement | null>(null)
 let previousFocus: HTMLElement | null = null
@@ -28,7 +30,7 @@ onUnmounted(() => {
     else {
       const draftInput = document.getElementById('draft-work-order')
       if (draftInput && !draftInput.matches(':disabled')) draftInput.focus()
-      else document.getElementById('mock-title')?.focus()
+      else document.getElementById('manual-note')?.focus()
     }
   })
 })
@@ -37,11 +39,11 @@ onUnmounted(() => {
 <template>
   <dialog ref="element" aria-labelledby="confirmation-title" aria-describedby="confirmation-note" @cancel.prevent="emit('cancel')" @keydown.tab="keepTabFocus">
     <h2 id="confirmation-title">{{ title }}</h2>
-    <p id="confirmation-note" class="muted">Mock：仅修改内存示例，不保存到本地存储。</p>
+    <p id="confirmation-note" class="muted">{{ description }}</p>
     <slot />
     <div class="actions dialog-actions">
-      <button type="button" autofocus @click="emit('cancel')">{{ cancelText }}</button>
-      <button type="button" class="primary" @click="emit('confirm')">{{ confirmText }}</button>
+      <button type="button" autofocus :disabled="disabled" @click="emit('cancel')">{{ cancelText }}</button>
+      <button type="button" class="primary" :disabled="disabled" @click="emit('confirm')">{{ confirmText }}</button>
     </div>
   </dialog>
 </template>

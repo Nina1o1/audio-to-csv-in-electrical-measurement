@@ -10,8 +10,11 @@ export default {
     },
   },
   test: {
-    environment: 'node',
-    include: ['tests/**/*.test.ts'],
+    // The dependency-free Vue host needs client SFC transforms; other tests retain Node/SSR.
+    projects: [
+      { extends: true, test: { name: 'contracts', environment: 'node', include: ['tests/**/*.test.ts'], exclude: ['tests/integration/manual-app.test.ts'] } },
+      { extends: true, test: { name: 'app', environment: './tests/helpers/vue-renderer-environment.ts', include: ['tests/integration/manual-app.test.ts'] } },
+    ],
     clearMocks: true,
     restoreMocks: true,
   },
