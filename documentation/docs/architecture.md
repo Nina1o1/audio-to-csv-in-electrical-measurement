@@ -76,7 +76,7 @@ IDLE → requestSave 校验 → CONFIRMING_SAVE
 
 ## 5. 持久化与历史操作
 
-固定存储 key 为 inspection-records:v1，内容为新模型 InspectionRecord[] 的 JSON，测量字段直接保存 number。
+固定存储 key 为 inspection-records，内容为新模型 InspectionRecord[] 的 JSON，测量字段直接保存 number。按 Phase 3 M4 确认更新 key；不自动读取、迁移或删除其他 key。
 
 M4 先构造并校验完整新集合，再序列化和写入；setItem 正常返回后提交内存并通知。通知异常单独处理，不能把已保存操作报告为写失败。通知中的嵌套变更拒绝，避免重入顺序混乱。
 

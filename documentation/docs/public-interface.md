@@ -166,13 +166,23 @@ SAVING 时重复保存、编辑、删除或取消均拒绝。结果不确定时�
 
 ### 初始化和格式
 
-- 固定 key：`inspection-records:v1`；值为 JSON 编码的 `InspectionRecord[]`，不增加包装字段；测量字段为 number。
+- 固定 key：`inspection-records`；值为 JSON 编码的 `InspectionRecord[]`，不增加包装字段；测量字段为 number。按 Phase 3 M4 确认更新 key；不自动读取、迁移或删除其他 key。
 - key 不存在才初始化为 `[]`；读取失败、JSON 错误、无效记录或重复 ID 都必须整体拒绝。
 - 初始化失败保持未初始化，所有业务查询和写入抛 NOT_INITIALIZED；保留原始存储，不自动修复、清空或部分加载。
 - 初始化成功后重复 initialize 返回当前快照，不重新读盘覆盖内存。失败后允许用户修复外部原因再重试初始化。
 - 后续升级不能仅更换 key 就把旧数据当空集合；迁移须另行设计，不在本版自动执行。
 
 ### 写入和结果边界
+
+#### Phase 3 M4 已确认的运行时边界
+
+- 非法 ID（非字符串、空字符串、纯空白）抛 `INVALID_DATA`；合法 ID 按原文匹配，不修剪。
+- 记录必须包含且只包含 InspectionRecord 的九个字段；保存入口非法记录抛 `INVALID_DATA`，存储中的非法记录抛 `STORAGE_DATA_CORRUPTED`。新记录身份及时间由调用方提供，M4 不生成或重写。
+- query 拒绝额外键；非法查询抛 `INVALID_QUERY`。可选查询成员为 undefined 时视为未提供；update 显式提供 undefined 的字段值无效，抛 `INVALID_DATA`。
+- 通知中嵌套 save/update/delete（包括无变化操作）抛 `INVALID_DATA`；只读及已初始化的 initialize 可调用。
+- 非函数订阅参数抛 TypeError；取消订阅幂等。订阅异常通过 console.error 单独报告，报告本身失败也不改变提交结果或阻断其他订阅者。
+- 无法取得可用存储对象抛 `STORAGE_UNAVAILABLE`；getItem 抛错为 `STORAGE_READ_FAILED`；JSON 或数据损坏为 `STORAGE_DATA_CORRUPTED`；序列化或 setItem 失败为 `STORAGE_WRITE_FAILED`。
+- key 不存在时仅建立空内存集合，initialize 不写存储、不通知。
 
 1. 在写入前完成运行时校验、复制、完整新集合构造和 JSON 序列化。
 2. 调用 localStorage.setItem；正常返回即视为持久化提交成功。
