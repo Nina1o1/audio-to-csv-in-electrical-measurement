@@ -1,5 +1,7 @@
 # Data Models
 
+测量字段仅记录数值，草稿未填写时为 null。mΩ、MΩ、V 仅说明字段含义，不作为数据字段保存；解析结果、正式记录和 CSV 均不包含单位数据。
+
 
 ```text
 interface TranscriptSegment {
@@ -9,22 +11,19 @@ interface TranscriptSegment {
 ```
 type InspectionResult = "PASS" | "FAIL";
 
-interface Measurement<Unit extends string> {
-  value: number;
-  unit: Unit;
-}
-
+// 已确认的检测字段
 interface InspectionFields {
   workOrder: string;
   partNumber: string;
 
-  contactResistance: Measurement<"mΩ">;
-  insulationResistance: Measurement<"MΩ">;
-  withstandVoltage: Measurement<"V">;
+  contactResistance: number;    // mΩ
+  insulationResistance: number; // MΩ
+  withstandVoltage: number;     // V
 
   result: InspectionResult;
 }
 
+// 已保存的检测记录
 interface InspectionRecord extends InspectionFields {
   id: string; // unique
   createdAt: string;
@@ -32,56 +31,33 @@ interface InspectionRecord extends InspectionFields {
 }
 ```
 ```
-interface DraftMeasurement<Unit extends string> {
-  value: number | null;
-  unit: Unit | null;
-}
-
-interface DraftFields {
-  workOrder: string | null;
-  partNumber: string | null;
-
-  contactResistance: DraftMeasurement<"mΩ">;
-  insulationResistance: DraftMeasurement<"MΩ">;
-  withstandVoltage: DraftMeasurement<"V">;
-
-  result: InspectionResult | null;
-}
+// 尚未完成的草稿
+type DraftFields = {
+  [K in keyof InspectionFields]: InspectionFields[K] | null;
+};
 ```
 ```
 const emptyDraftFields: DraftFields = {
   workOrder: null,
   partNumber: null,
 
-  contactResistance: {
-    value: null,
-    unit: null
-  },
+  contactResistance: null,
 
-  insulationResistance: {
-    value: null,
-    unit: null
-  },
+  insulationResistance: null,
 
-  withstandVoltage: {
-    value: null,
-    unit: null
-  },
+  withstandVoltage: null,
 
   result: null
 };
 ```
 ```
-type MeasurementUpdate<Unit extends string> =
-  Partial<DraftMeasurement<Unit>>;
-
 interface ParseResult {
   workOrder?: string;
   partNumber?: string;
 
-  contactResistance?: MeasurementUpdate<"mΩ">;
-  insulationResistance?: MeasurementUpdate<"MΩ">;
-  withstandVoltage?: MeasurementUpdate<"V">;
+  contactResistance?: number;
+  insulationResistance?: number;
+  withstandVoltage?: number;
 
   result?: InspectionResult;
 }

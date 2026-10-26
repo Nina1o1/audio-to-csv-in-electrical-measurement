@@ -2,7 +2,7 @@
 
 日期：2026-10-26
 
-本文件保留原有方法签名和类型，只补全行为。共享 [Data Models](data-models.md) 不变。第 1–6 节是修订后的行为约定，第 7 节保留完整公开声明；旧文档中与本文件不同的行为说明以本文件为准。当前仅整理文档，不实现代码。
+本文件按纯数值测量模型更新行为与公开声明，共享类型见 [Data Models](data-models.md)。第 1–6 节规定行为，第 7 节列出公开声明；旧文档中与本文件不同的说明以本文件为准。本次仅更新文档，源码与测试尚未同步新模型。
 
 ## 1. 所有模块共同遵守
 
@@ -12,22 +12,42 @@
 - 订阅回调抛错应单独报告，不能改变已完成操作的结果，也不能阻止其他订阅者收到通知。
 - 通知期间发起的业务变更不得嵌套执行，应拒绝并由 App 在通知结束后重新发起。只读查询可以执行。此规则避免事件重入造成顺序混乱。
 - 新记录首次创建时，ID 唯一，createdAt 与 updatedAt 相同；时间由系统生成。历史修改保留 ID、createdAt，实际变化才更新 updatedAt。
-- 测量值要求有限、非负，允许 0，不擅自设置量程上限，也不自动四舍五入。标准单位为 mΩ、MΩ、V。PASS/FAIL 由用户输入，不从测量值自动推导。
+- 测量值要求有限、非负，允许 0，不擅自设置量程上限，也不自动四舍五入。三个测量字段直接使用 number，字段含义分别为 mΩ、MΩ、V；不记录单位数据。PASS/FAIL 由用户输入，不从测量值自动推导。
 - 字符串必填且不能只有空白；保存时不擅自改变标识符大小写或内部空格。
 
 上述数值规则用于数据有效性检查，不代表工业检验合格标准。若实际业务标准不同，须先修订规则。
+
+### 共享模型派生建议（R3，待同步 Data Models）
+
+DraftFields 应按已确认原则从 InspectionFields 派生，建议将 data-models.md 中逐项重复的定义替换为以下等价定义；本轮尚未修改该文件。此处仅记录同步建议，不另建一份共享类型或新增运行时结构。
+
+```typescript
+type DraftFields = {
+  [K in keyof InspectionFields]: InspectionFields[K] | null;
+};
+```
+
+字段名称、可空性、emptyDraftFields 的值及公开方法签名均不改变；初始化和清空仍创建独立对象。该调整不引入 unit 或测量子对象。
 
 ## 2. M1：语音识别
 
 | 接口/事件 | 修订后的行为 |
 |---|---|
-| startListening | 仅 IDLE 可启动；浏览器确认启动后才 resolve 并进入 LISTENING。启动尚未完成时，重复请求拒绝，不重复启动。失败回到 IDLE，通过原 SpeechError 报告。 |
+| startListening | 仅 IDLE 可启动；浏览器确认启动后才进入 LISTENING 并 resolve。启动失败回到 IDLE，以原 SpeechError reject，并通过 onError 报告一次。启动未完成时的取消及重复请求见下方约定。 |
 | startRecording | 仅 LISTENING 生效，进入 RECORDING 并清空本次缓冲；非法状态不修改数据。 |
 | stopRecording | 只处理当前录入，输出已确认文本，最多产生一次完成事件；重复停止不重复通知。正常目标状态为 LISTENING。 |
 | stopListening | 任意状态可请求停止。录入中先结束并输出已确认文本，再进入 IDLE；IDLE 无操作。启动尚未完成时也要记住停止意图，迟到的启动结果不能重新开启监听。 |
 | onTranscriptUpdate | 只用于展示本次完整实时快照；不能把每次更新追加成历史或直接写草稿。 |
 | onTranscriptComplete | 每次录入最多一次，只包含已确认文本，不含 interim 文本和控制命令。中断时也保留已确认文本。 |
 | onCommand | 只从已确认结果识别命令；LISTENING 可识别全部命令，RECORDING 仅识别 STOP_INPUT。由 App 判断业务命令是否可执行。 |
+
+### 启动请求的完成与取消
+
+- 每次 startListening 返回的 Promise 必须且只能结算一次。启动失败（含 10 秒启动超时）必须 reject，不能只发 onError 后让 Promise 悬挂；拒绝值为现有 SpeechError，错误码沿用第 7 节。
+- 启动尚未完成时调用 stopListening：使该启动操作失效，保持 IDLE，并立即以 code=RECOGNITION_FAILED 的 SpeechError reject 原 Promise，message 说明启动已取消；主动取消不发 onError。重复停止不重复结算，迟到的启动、错误或超时回调不得改变状态或再次报告该操作。
+- 非 IDLE 或已有启动请求时调用 startListening：仅拒绝本次请求，以 code=RECOGNITION_FAILED 的 SpeechError reject，不发 onError，不改变原请求及当前状态。
+- 真正的启动故障同时通过 Promise 拒绝值和 onError 暴露；App 统一由 onError 展示故障，catch 处理请求结束，不重复提示。App 根据自身停止意图处理主动取消，不通过匹配 message 文本判断业务状态。
+- App 在 finally 中清除对应请求的启动标记，并依据 getState() 更新控件；旧请求的 finally 不得清除新请求的标记。监听已启动后的运行错误只发 onError，不重新结算已完成的 Promise。
 
 “结束输入”和“结束录入”都映射为 STOP_INPUT。页面“监听”按钮在录入期间禁用；“结束录入”按钮调用 stopRecording，保留已确认文本并返回监听。stopListening 保留原底层行为，用于页面退出或异常清理，不要求录入期间提供 UI 切换入口。
 
@@ -49,12 +69,13 @@
 
 - 未提及、无法识别的字段不输出；没有有效字段返回 `{}`。
 - 无关内容跳过；字段顺序不限；同字段取文本中最后一个有效值。
-- 语音测量更新须明确识别数值及单位，成功转换后输出完整 `{ value, unit }`。缺少数值或单位时不输出该测量字段；可通过手动方式补充。
-- 换算后也必须满足有限、非负要求。后续无效表达不清空之前的有效值。
+- 语音测量更新识别字段名、数值及单位，在 M2 内部转换为字段的标准单位后，仅输出 number，不输出 unit 属性。contactResistance 使用 mΩ，insulationResistance 使用 MΩ，withstandVoltage 使用 V。
+- 语音未提供单位时，默认使用该字段的标准单位，数值直接输出。缺少有效数值时不输出该字段，可手动补充。
+- 原始数值及换算后的数值都必须满足有限、非负要求。后续无效表达不清空之前的有效值。
 - 不输出 null，不修改 segment，不负责整份草稿完整性校验。
 - segment 结构非法（例如 text 不是字符串）时抛 TypeError；空文本属于正常输入，返回 `{}`。
 
-MeasurementUpdate 保持原来的 Partial 类型；M3 仍按属性合并。M2 第一版采用完整测量输出策略，不改变共享模型。
+ParseResult 使用可选字段表示稀疏更新，三项测量均为可选 number；M3 按字段替换数值，不再合并测量子属性。
 
 ### 第一版固定词表
 
@@ -71,31 +92,45 @@ MeasurementUpdate 保持原来的 Partial 类型；M3 仍按属性合并。M2 �
 
 - 字段名后允许空白，以及“是”“为”“改成”“改为”、冒号等连接词。标识符和值必须有明确字段名；结果也必须带字段名，不把无关的“通过”写成结果。
 - 工单号、零件号只接受识别文本中已经出现的 ASCII 字母、数字、连字符、下划线组成的连续标识符，例如 A2301、P-007。去掉字段周围的分隔空白，保留标识符大小写和前导零。不把“诶”“杠”等口述词猜成字符，也不拼接被空格拆开的标识符片段；这类输入请手动修正。
-- 测量值支持阿拉伯十进制整数/小数，以及一千以内的常用中文数词：零/〇、一至九、两、十、百、千及规范组合；小数用“点”后逐位读数。也接受逐位数字串，如“一二点五”→12.5。不支持万/亿、分数、科学计数法、千位分隔符或混合中阿数字。
+- 测量值支持阿拉伯十进制整数/小数，以及一千以内（含 1000）的常用中文数词：零/〇、一至九、两、十、百、千及规范组合；小数用“点”后逐位读数。也接受逐位数字串，如“一二点五”→12.5；中文数词的原始数值同样不得超过 1000。不支持万/亿、分数、科学计数法、千位分隔符或混合中阿数字。该范围仅限制中文数词，不限制阿拉伯数值或单位换算后的标准数值；例如“耐压一点五千伏”仍输出 1500。
 - 数词须完整匹配，不能从负数、指数、分数或不合法组合中截取一段有效数字。负号、“负”及范围表达都不形成有效测量更新。
 - 结果映射：PASS（忽略英文大小写）、合格、通过 → PASS；FAIL（忽略英文大小写）、不合格、不通过 → FAIL。按完整结果词匹配，先识别较长词，避免“不合格”误判为“合格”。
 
-| 单位词 | 原值乘数 → 标准单位 |
-|---|---|
-| mΩ、毫欧、毫欧姆 | ×1 → mΩ（接触电阻） |
-| Ω、欧、欧姆 | ×1000 → mΩ（接触电阻）；×0.000001 → MΩ（绝缘电阻） |
-| MΩ、兆欧、兆欧姆 | ×1 → MΩ（绝缘电阻） |
-| V、伏、伏特 | ×1 → V（耐压） |
-| kV、千伏、千伏特 | ×1000 → V（耐压） |
+### 单位识别与标准化
 
-单位符号大小写严格区分，mΩ 与 MΩ 不能混淆；不按大小写模糊推断单位。只接受表内与目标字段匹配的单位。
+单位识别和换算仅在 M2 内部完成；输出的 ParseResult 测量字段均为标准单位下的数值，后续模块直接使用，不重复换算，也不保存单位属性。
+
+| 目标字段 | 接受的单位词 | 转换为标准数值 |
+|---|---|---|
+| contactResistance | mΩ、毫欧、毫欧姆 | ×1（mΩ） |
+| contactResistance | Ω、欧、欧姆 | ×1000（mΩ） |
+| insulationResistance | MΩ、兆欧、兆欧姆 | ×1（MΩ） |
+| insulationResistance | Ω、欧、欧姆 | ×0.000001（MΩ） |
+| withstandVoltage | V、伏、伏特 | ×1（V） |
+| withstandVoltage | kV、千伏、千伏特 | ×1000（V） |
+
+- 单位符号大小写严格区分，mΩ 与 MΩ 不能混淆；只接受表内与目标字段匹配的单位。
+- 未提供单位时，接触电阻默认 mΩ，绝缘电阻默认 MΩ，耐压默认 V，不借用其他字段或先前表达的单位。
+- 明确提供了不支持或与目标字段不匹配的单位时，该次测量表达无效，不得按缺省单位处理；同字段仍保留本片段中最后一个有效值。
 
 ### 最小验收样例
 
 | 输入 | 预期 |
 |---|---|
 | 工单号 A2301，零件号 P-007 | workOrder=A2301；partNumber=P-007 |
-| 接触电阻十二点五毫欧 | contactResistance={value:12.5,unit:"mΩ"} |
-| 接触电阻 0.015 欧 | contactResistance={value:15,unit:"mΩ"} |
-| 绝缘电阻两百兆欧，耐压一点五千伏，结果不合格 | 200 MΩ；1500 V；FAIL |
-| 接触电阻 12 毫欧，接触电阻改成 15 毫欧 | 接触电阻为 15 mΩ |
-| 接触电阻 12 毫欧，接触电阻改成负三毫欧 | 保留该片段中最后有效值 12 mΩ |
-| 接触电阻 12 | 不输出接触电阻 |
+| 接触电阻十二点五 | contactResistance=12.5 |
+| 接触电阻 0.015 | contactResistance=0.015（未提供单位，默认 mΩ） |
+| 接触电阻 0.015 欧 | contactResistance=15 |
+| 接触电阻十二点五毫欧 | contactResistance=12.5 |
+| 绝缘电阻 200000000 欧 | insulationResistance=200 |
+| 耐压一点五千伏 | withstandVoltage=1500 |
+| 绝缘电阻 200，耐压 1500 | insulationResistance=200（默认 MΩ）；withstandVoltage=1500（默认 V） |
+| 接触电阻 12，接触电阻改成 15 伏 | contactResistance=12（后一次单位不匹配） |
+| 绝缘电阻两百，耐压一千，结果不合格 | insulationResistance=200；withstandVoltage=1000；result=FAIL |
+| 耐压一千五百 | {}（中文数词超出首版范围，不截取其中的“一千”） |
+| 接触电阻 12，接触电阻改成 15 | contactResistance=15 |
+| 接触电阻 12，接触电阻改成负三 | 保留该片段中最后有效值 contactResistance=12 |
+| 接触电阻 | 不输出接触电阻 |
 | 零件号诶零零七 | 不输出零件号，手动补充 |
 | 今天设备已经检查过了 | {} |
 
@@ -103,12 +138,12 @@ MeasurementUpdate 保持原来的 Partial 类型；M3 仍按属性合并。M2 �
 
 ### 编辑和校验
 
-- 只在 IDLE 允许 applyParseResult、updateField、updateMeasurement。
-- 语音按字段、测量属性合并；缺少的属性保持原值。null 不能清空已有值，应忽略该空更新。其他非法解析数据应整批拒绝，不部分合并。
+- 只在 IDLE 允许 applyParseResult、updateField。
+- 语音按字段合并；未提供的字段保持原值。null 不能清空已有值，应忽略该空更新。其他非法解析数据应整批拒绝，不部分合并。
 - App 仅在 M3 为 IDLE 且未进行结构化处理时开放手动编辑；CONFIRMING_SAVE、CONFIRMING_DELETE、SAVING 均冻结草稿。录音中如满足上述条件可编辑，解析合并期间暂时禁用。
-- 手动编辑可用 null 单独清空字段或测量属性。App 将空输入转换为 null，不能把空字符串转换成数字 0。
+- 手动编辑可用 null 单独清空字段。App 将空输入转换为 null，不能把空字符串转换成数字 0。
 - validate 不改数据或状态；requestSave 校验成功才进入 CONFIRMING_SAVE。两者返回全部错误。
-- 必填、字符串、有限非负数字、标准单位和结果枚举都要检查；历史和导出入口采用同一套有效性规则。
+- 必填、字符串、有限非负数字和结果枚举都要检查；历史和导出入口采用同一套有效性规则。
 - 非法状态调用抛 Error；结构/类型非法抛 TypeError；不得修改草稿、pending 或状态。不新增公开错误类型。
 
 ### 保存与重试
@@ -131,7 +166,7 @@ SAVING 时重复保存、编辑、删除或取消均拒绝。结果不确定时�
 
 ### 初始化和格式
 
-- 固定 key：`inspection-records:v1`；值为 JSON 编码的 `InspectionRecord[]`，不增加包装字段，不改变模型。
+- 固定 key：`inspection-records:v1`；值为 JSON 编码的 `InspectionRecord[]`，不增加包装字段；测量字段为 number。
 - key 不存在才初始化为 `[]`；读取失败、JSON 错误、无效记录或重复 ID 都必须整体拒绝。
 - 初始化失败保持未初始化，所有业务查询和写入抛 NOT_INITIALIZED；保留原始存储，不自动修复、清空或部分加载。
 - 初始化成功后重复 initialize 返回当前快照，不重新读盘覆盖内存。失败后允许用户修复外部原因再重试初始化。
@@ -149,7 +184,7 @@ SAVING 时重复保存、编辑、删除或取消均拒绝。结果不确定时�
 | 接口 | 关键约束 |
 |---|---|
 | save | 同 ID 且全部持久化字段相同：幂等成功，不写、不通知；同 ID 不同内容：DUPLICATE_ID，不覆盖。首次保存前必须校验完整记录。 |
-| update | 仅允许 InspectionFields 字段；运行时拒绝 id、createdAt、updatedAt 或其他额外键。测量必须完整提交。验证合并后的整条记录。无变化不写、不更新时间、不通知。不存在抛 RECORD_NOT_FOUND。 |
+| update | 仅允许 InspectionFields 字段；运行时拒绝 id、createdAt、updatedAt 或其他额外键。测量字段直接提交 number。验证合并后的整条记录。无变化不写、不更新时间、不通知。不存在抛 RECORD_NOT_FOUND。 |
 | delete | 不存在返回 false；存在时先写后提交。写失败保留原记录。 |
 | getAll/query/getById | 返回独立快照，不能修改内存集合或存储。query 条件 AND，工单号包含匹配且忽略大小写、查询两端空白；日期含边界。 |
 | onRecordsChange | 只通知实际成功持久化的变化；initialize、查询、幂等保存、无变化修改和失败不通知。 |
@@ -185,16 +220,23 @@ SAVING 时重复保存、编辑、删除或取消均拒绝。结果不确定时�
 
 - generateCsv 先校验整批数据；任何记录无效则整体失败，不返回部分文件。
 - 保留输入顺序；正确转义逗号、双引号、换行；行分隔符 CRLF。
-- 固定 12 列及顺序：ID、工单号、零件号、接触电阻值、接触电阻单位、绝缘电阻值、绝缘电阻单位、耐压值、耐压单位、检验结果、创建时间、修改时间。
+- 固定 9 列及顺序：ID、工单号、零件号、接触电阻值、绝缘电阻值、耐压值、检验结果、创建时间、修改时间。测量列只输出数值，不输出单位。
 - 第一版优先安全地用 Excel 打开：对文本单元格检查原文及前置空白/控制字符后的危险前缀 `=`、`+`、`-`、`@`，以及前置制表/回车/换行；危险内容在原文前加单引号，再做 CSV 转义。加双引号本身不等于公式防护。
 - 防护只改变导出文本，不修改原记录；不承诺 CSV 原文无损往返。
-- generateCsv 不带 BOM、不下载；export 默认文件名 inspection-records.csv、includeBom=true，按原文件名规则校验并释放临时资源。
+- generateCsv 不带 BOM、不下载；export 默认文件名 inspection-records.csv、includeBom=true，按下方文件名规则校验并释放临时资源。
 - 成功只表示下载已发起，不表示用户已保存到磁盘。
 - App 决定导出集合：选中项按 ID 从 M4 获取最新记录；全部导出不受当前筛选限制。空集合不下载。失效选择清除，并提示实际导出数量。
 
+### 文件名校验
+
+- filename 未提供或为 undefined 时使用 inspection-records.csv；显式传入的其他值必须是字符串。
+- 文件名必须以 .csv 结尾（扩展名忽略大小写），扩展名前的名称去除首尾空白后不能为空；不接受路径分隔符 /、反斜杠及 ASCII 控制字符（U+0000–U+001F、U+007F）。
+- 不符合上述条件时抛 CsvExportError，code=INVALID_FILENAME，不发起下载。不自动修剪、补扩展名或替换字符；合法文件名按原文传给下载适配，CsvExportResult.filename 返回同一名称。
+- 示例：质检记录.csv、inspection-records.CSV 有效；空字符串、.csv、records.txt、folder/records.csv 无效。
+
 ## 7. 公开声明
 
-以下声明来自原 Public Interface；只移除原注释，未修改类型或方法签名。共享基础类型见 data-models.md。行为以本文件前述章节为准。
+以下声明已按纯数值测量模型修订：手动编辑统一使用 updateField，删除测量子属性编辑接口及单位校验类型。共享基础类型见 data-models.md。行为以本文件前述章节为准。
 
 ### M1
 
@@ -236,6 +278,7 @@ interface SpeechError {
 
 interface SpeechRecognitionModule {
 
+  // Promise 的成功、失败、取消及 onError 去重规则见第 2 节。
   startListening(): Promise<void>;
 
   stopListening(): void;
@@ -286,28 +329,12 @@ type DraftState =
   | "CONFIRMING_SAVE"
   | "SAVING";
 
-type SimpleDraftField =
-  | "workOrder"
-  | "partNumber"
-  | "result";
-
-type MeasurementField =
-  | "contactResistance"
-  | "insulationResistance"
-  | "withstandVoltage";
-
-type MeasurementProperty =
-  | "value"
-  | "unit";
-
 type DraftValidationErrorCode =
   | "REQUIRED"
-  | "INVALID_VALUE"
-  | "INVALID_UNIT";
+  | "INVALID_VALUE";
 
 interface DraftValidationError {
   field: keyof DraftFields;
-  property?: MeasurementProperty;
   code: DraftValidationErrorCode;
   message: string;
 }
@@ -327,18 +354,9 @@ interface DraftManagerModule {
     result: ParseResult
   ): DraftFields;
 
-  updateField<K extends SimpleDraftField>(
+  updateField<K extends keyof DraftFields>(
     field: K,
     value: DraftFields[K]
-  ): DraftFields;
-
-  updateMeasurement<
-    K extends MeasurementField,
-    P extends MeasurementProperty
-  >(
-    field: K,
-    property: P,
-    value: DraftFields[K][P]
   ): DraftFields;
 
   validate(): DraftValidationResult;
@@ -449,6 +467,7 @@ interface RecordManagerModule {
 
 ```typescript
 interface CsvExportOptions {
+  // 缺省值及 INVALID_FILENAME 条件见第 6 节“文件名校验”。
   filename?: string;
   includeBom?: boolean;
 }
