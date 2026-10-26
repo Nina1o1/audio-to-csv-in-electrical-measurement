@@ -16,6 +16,8 @@ const UNIT_FACTORS: Record<MeasurementField, Readonly<Record<string, number>>> =
   insulationResistance: { MΩ: 1, 兆欧: 1, 兆欧姆: 1, Ω: 0.000001, 欧: 0.000001, 欧姆: 0.000001 },
   withstandVoltage: { V: 1, 伏: 1, 伏特: 1, kV: 1000, 千伏: 1000, 千伏特: 1000 },
 }
+const UNIT_WORDS = [...new Set(Object.values(UNIT_FACTORS).flatMap(units => Object.keys(units)))]
+  .sort((a, b) => b.length - a.length)
 const RESULT_WORDS: Readonly<Record<string, 'PASS' | 'FAIL'>> = {
   PASS: 'PASS', 合格: 'PASS', 通过: 'PASS', FAIL: 'FAIL', 不合格: 'FAIL', 不通过: 'FAIL',
 }
@@ -25,7 +27,9 @@ function isMeasurement(field: Field): field is MeasurementField {
 }
 
 function expressionPart(text: string): { expression: string; adjacent: boolean } {
-  for (const match of text.matchAll(/[,，;；。!?！？\n]/g)) {
+  // A line break is whitespace inside a candidate, not proof that its unit is absent.
+  // Preserve it so split numbers/ranges fail whole-expression validation instead of joining.
+  for (const match of text.matchAll(/[,，;；。!?！？]/g)) {
     const index = match.index
     // Keep numeric separators inside the candidate so 1,000 cannot become 1.
     if (/[,，]/.test(match[0]) && /[0-9]/.test(text[index - 1] ?? '') && /[0-9]/.test(text[index + 1] ?? '')) continue
@@ -37,21 +41,28 @@ function expressionPart(text: string): { expression: string; adjacent: boolean }
   return { expression: text.trim(), adjacent: true }
 }
 
-function measurementValue(text: string, field: MeasurementField): number | undefined {
+function measurementCandidate(text: string, field: MeasurementField): { value?: number; identifiable: boolean } {
   // Match the longest unit suffix before parsing numbers, keeping 千伏 intact
   // in 一点五千伏. The remainder must still be a complete valid numeral.
   const factors = UNIT_FACTORS[field]
-  const unit = Object.keys(factors).sort((a, b) => b.length - a.length).find(word => text.endsWith(word))
+  const unit = UNIT_WORDS.find(word => text.endsWith(word))
   const numeral = unit === undefined ? text : text.slice(0, -unit.length).trimEnd()
-  const value = /^[0-9]+(?:\.[0-9]+)?$/.test(numeral)
-    ? Number(numeral)
-    : /^[零〇一二两三四五六七八九十百千点]+$/.test(numeral) ? parseChineseNumber(numeral) : undefined
+  // A signed number can identify what the speaker corrects without becoming a valid update.
+  const unsigned = numeral.replace(/^(?:负|[-−+])/, '')
+  const value = /^[0-9]+(?:\.[0-9]+)?$/.test(unsigned)
+    ? Number(unsigned)
+    : /^[零〇一二两三四五六七八九十百千点]+$/.test(unsigned) ? parseChineseNumber(unsigned) : undefined
   // Validate the entire remaining numeral, so μΩ cannot be accepted as Ω and
   // unknown units cannot fall back to no-unit input. Symbols are case-sensitive.
-  if (value === undefined || !Number.isFinite(value) || value < 0) return undefined
+  if (value === undefined) return { identifiable: false }
+  const factor = unit === undefined ? 1 : factors[unit]
+  // A recognized but mismatched unit is structurally clear, never a default-unit value.
+  if (unsigned !== numeral || !Number.isFinite(value) || factor === undefined) return { identifiable: true }
   // Conversion happens once, before candidates can update the public result.
-  const normalized = value * (unit === undefined ? 1 : factors[unit]!)
-  return Number.isFinite(normalized) && normalized >= 0 ? normalized : undefined
+  const normalized = value * factor
+  return Number.isFinite(normalized) && normalized >= 0
+    ? { value: normalized, identifiable: true }
+    : { identifiable: true }
 }
 
 /** Create a stateless, synchronous parser for one transcript segment at a time. */
@@ -81,16 +92,17 @@ export function createTextParser(): TextParserModule {
         const part = expressionPart(connected)
         const expression = part.expression
         if (isMeasurement(target)) {
-          const value = measurementValue(expression, target)
+          const candidate = measurementCandidate(expression, target)
           // Only valid candidates overwrite; invalid later values preserve previous updates.
-          if (value !== undefined) result[target] = value
+          if (candidate.value !== undefined) result[target] = candidate.value
           // Omitted-field corrections only follow an explicitly named, adjacent expression.
           // Do not chain corrections or carry context across unrelated clauses/other fields.
-          // A field mention without a numeric expression cannot establish a target.
-          const hasNumericStart = /^(?:负|[-−+])?[0-9零〇一二两三四五六七八九十百千点.]/.test(expression)
-          if (!correction && part.adjacent && hasNumericStart) correctionTarget = target
+          // Numeric prefixes alone do not prove that an expression has a clear owner.
+          if (!correction && part.adjacent && candidate.identifiable) correctionTarget = target
         } else if (target === 'result') {
-          const value = RESULT_WORDS[expression.toUpperCase()]
+          // Fold ASCII letters only: Unicode ſ/ß must not expand the fixed PASS vocabulary.
+          const word = expression.replace(/[a-z]/g, char => char.toUpperCase())
+          const value = RESULT_WORDS[word]
           if (value) result.result = value
         } else if (/^[A-Za-z0-9_-]+$/.test(expression)) {
           result[target] = expression
