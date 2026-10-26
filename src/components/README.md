@@ -1,5 +1,7 @@
 # Vue 页面组件
 
-Phase 1 组件：VoicePanel 展示关键词与本次转写区域；DraftPanel 展示六项草稿和固定单位；HistoryPanel 展示历史示例、查询控件和 CSV 操作区；ConfirmationPreview 展示确认框布局。组件只读 props 或静态内容，所有业务控件禁用，不实现解析、校验或持久化业务。
+Phase 2：VoicePanel 展示关键词、本次文本和监听/结束录入控件；DraftPanel 展示六项字段并发出编辑、保存、删除事件，也复用于历史编辑副本；HistoryPanel 展示查询、当前结果选择、历史操作和模拟导出入口。
 
-手动编辑仅在 M3 为 IDLE 且未进行结构化处理时开放；录入中禁用监听切换按钮。
+ConfirmationPreview.vue 沿用已有文件名，现为原生 dialog 确认框，负责键盘取消、模态焦点限制及关闭后焦点恢复。业务操作通过事件交给 App；组件不实现字段解析、业务校验、持久化或 CSV。
+
+编辑仅在草稿 IDLE 且未结构化处理时开放，确认/保存期间冻结。录入中禁用监听切换。所有 Mock 提示、预设结果与内存修改由 App 使用的局部 Mock 协调处理。

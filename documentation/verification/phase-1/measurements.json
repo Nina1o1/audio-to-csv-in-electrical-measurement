@@ -1,0 +1,352 @@
+[
+  {
+    "allControlsDisabled": true,
+    "clientWidth": 1351,
+    "draftFont": "24px",
+    "draftShare": 0.6402356197077604,
+    "history": {
+      "overflow": "auto",
+      "scrollWidth": 1176,
+      "width": 1176
+    },
+    "measurementValues": [
+      "",
+      "",
+      ""
+    ],
+    "pageWidth": 1351,
+    "panels": [
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 160.3984375,
+        "height": 73.3984375,
+        "shadow": "none",
+        "title": "语音关键词提示",
+        "top": 87
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 318.3984375,
+        "height": 148,
+        "shadow": "none",
+        "title": "实时语音转写文本",
+        "top": 170.3984375
+      },
+      {
+        "background": "rgb(251, 234, 234)",
+        "border": "0px",
+        "bottom": 722.3984375,
+        "height": 394,
+        "shadow": "none",
+        "title": "当前质检草稿",
+        "top": 328.3984375
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 1112.7890625,
+        "height": 380.390625,
+        "shadow": "none",
+        "title": "历史记录",
+        "top": 732.3984375
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 1309.8828125,
+        "height": 187.09375,
+        "shadow": "none",
+        "title": "确认弹窗布局预览",
+        "top": 1122.7890625
+      }
+    ],
+    "result": "",
+    "rows": 6,
+    "viewport": {
+      "height": 768,
+      "width": 1366
+    }
+  },
+  {
+    "allControlsDisabled": true,
+    "clientWidth": 1425,
+    "draftFont": "24px",
+    "draftShare": 0.6402356197077604,
+    "history": {
+      "overflow": "auto",
+      "scrollWidth": 1176,
+      "width": 1176
+    },
+    "measurementValues": [
+      "",
+      "",
+      ""
+    ],
+    "pageWidth": 1425,
+    "panels": [
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 160.3984375,
+        "height": 73.3984375,
+        "shadow": "none",
+        "title": "语音关键词提示",
+        "top": 87
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 318.3984375,
+        "height": 148,
+        "shadow": "none",
+        "title": "实时语音转写文本",
+        "top": 170.3984375
+      },
+      {
+        "background": "rgb(251, 234, 234)",
+        "border": "0px",
+        "bottom": 722.3984375,
+        "height": 394,
+        "shadow": "none",
+        "title": "当前质检草稿",
+        "top": 328.3984375
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 1112.7890625,
+        "height": 380.390625,
+        "shadow": "none",
+        "title": "历史记录",
+        "top": 732.3984375
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 1309.8828125,
+        "height": 187.09375,
+        "shadow": "none",
+        "title": "确认弹窗布局预览",
+        "top": 1122.7890625
+      }
+    ],
+    "result": "",
+    "rows": 6,
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "allControlsDisabled": true,
+    "clientWidth": 375,
+    "draftFont": "22px",
+    "draftShare": 0.4994370535834917,
+    "history": {
+      "overflow": "auto",
+      "scrollWidth": 1100,
+      "width": 323
+    },
+    "measurementValues": [
+      "",
+      "",
+      ""
+    ],
+    "pageWidth": 375,
+    "panels": [
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 323.78125,
+        "height": 191.78125,
+        "shadow": "none",
+        "title": "语音关键词提示",
+        "top": 132
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 576.171875,
+        "height": 242.390625,
+        "shadow": "none",
+        "title": "实时语音转写文本",
+        "top": 333.78125
+      },
+      {
+        "background": "rgb(251, 234, 234)",
+        "border": "0px",
+        "bottom": 1019.3671875,
+        "height": 433.1953125,
+        "shadow": "none",
+        "title": "当前质检草稿",
+        "top": 586.171875
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 1791.6484375,
+        "height": 762.28125,
+        "shadow": "none",
+        "title": "历史记录",
+        "top": 1029.3671875
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 2321.0234375,
+        "height": 519.375,
+        "shadow": "none",
+        "title": "确认弹窗布局预览",
+        "top": 1801.6484375
+      }
+    ],
+    "result": "",
+    "rows": 6,
+    "viewport": {
+      "height": 844,
+      "width": 390
+    }
+  },
+  {
+    "allControlsDisabled": true,
+    "clientWidth": 305,
+    "draftFont": "22px",
+    "draftShare": 0.5066141732283465,
+    "history": {
+      "overflow": "auto",
+      "scrollWidth": 1100,
+      "width": 253
+    },
+    "measurementValues": [
+      "",
+      "",
+      ""
+    ],
+    "pageWidth": 305,
+    "panels": [
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 330.1875,
+        "height": 198.1875,
+        "shadow": "none",
+        "title": "语音关键词提示",
+        "top": 132
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 582.578125,
+        "height": 242.390625,
+        "shadow": "none",
+        "title": "实时语音转写文本",
+        "top": 340.1875
+      },
+      {
+        "background": "rgb(251, 234, 234)",
+        "border": "0px",
+        "bottom": 1044.96875,
+        "height": 452.390625,
+        "shadow": "none",
+        "title": "当前质检草稿",
+        "top": 592.578125
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 1817.25,
+        "height": 762.28125,
+        "shadow": "none",
+        "title": "历史记录",
+        "top": 1054.96875
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 2422.0078125,
+        "height": 594.7578125,
+        "shadow": "none",
+        "title": "确认弹窗布局预览",
+        "top": 1827.25
+      }
+    ],
+    "result": "",
+    "rows": 6,
+    "viewport": {
+      "height": 640,
+      "width": 320
+    }
+  },
+  {
+    "allControlsDisabled": true,
+    "clientWidth": 668,
+    "draftFont": "22px",
+    "draftShare": 0.5807609394927823,
+    "history": {
+      "overflow": "auto",
+      "scrollWidth": 1100,
+      "width": 616
+    },
+    "measurementValues": [
+      "",
+      "",
+      ""
+    ],
+    "pageWidth": 668,
+    "panels": [
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 213.1953125,
+        "height": 134.1953125,
+        "shadow": "none",
+        "title": "语音关键词提示",
+        "top": 79
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 379.1953125,
+        "height": 156,
+        "shadow": "none",
+        "title": "实时语音转写文本",
+        "top": 223.1953125
+      },
+      {
+        "background": "rgb(251, 234, 234)",
+        "border": "0px",
+        "bottom": 791.1953125,
+        "height": 402,
+        "shadow": "none",
+        "title": "当前质检草稿",
+        "top": 389.1953125
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 1483.0859375,
+        "height": 681.890625,
+        "shadow": "none",
+        "title": "历史记录",
+        "top": 801.1953125
+      },
+      {
+        "background": "rgb(240, 240, 240)",
+        "border": "0px",
+        "bottom": 1990.3671875,
+        "height": 497.28125,
+        "shadow": "none",
+        "title": "确认弹窗布局预览",
+        "top": 1493.0859375
+      }
+    ],
+    "result": "",
+    "rows": 6,
+    "viewport": {
+      "height": 384,
+      "width": 683
+    }
+  }
+]

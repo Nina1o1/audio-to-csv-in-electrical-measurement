@@ -1,3 +1,8 @@
+<script setup lang="ts">
+import type { MicrophoneState } from '../shared/data-models'
+defineProps<{ microphone: MicrophoneState; starting: boolean; processing: boolean; confirmedText: string; interimText: string; textComplete: boolean }>()
+const emit = defineEmits<{ listen: []; stop: [] }>()
+</script>
 <template>
   <section class="panel keywords-panel" aria-labelledby="keywords-title">
     <h2 id="keywords-title">语音关键词提示</h2>
@@ -12,17 +17,17 @@
     <div class="section-heading">
       <h2 id="voice-title">实时语音转写文本</h2>
       <div class="actions">
-        <span class="status">文本状态：空白</span>
-        <button type="button" disabled aria-describedby="static-note">开始监听</button>
+        <span class="status">文本状态：{{ microphone === 'RECORDING' ? '倾听中' : textComplete ? '文本编译完成' : '空白' }}</span>
+        <button type="button" :disabled="starting || microphone === 'RECORDING'" aria-describedby="voice-note" @click="emit('listen')">{{ starting ? '模拟启动中' : microphone === 'IDLE' ? '开始监听' : '停止监听' }}</button>
       </div>
     </div>
     <div class="transcript" aria-label="本次实时转写文本">
-      <p><span>已确认文本</span><span class="muted">等待本次录入内容…</span></p>
-      <p><span>临时文本</span><span class="muted">暂无临时文本</span></p>
+      <p><span>已确认文本</span><span class="muted">{{ confirmedText || '等待本次录入内容…' }}</span></p>
+      <p><span>临时文本</span><span class="muted">{{ interimText || '暂无临时文本' }}</span></p>
     </div>
     <div class="panel-footer">
-      <p class="muted">状态：空白 → 倾听中 → 文本编译完成。倾听中不可切换监听；结束录入保留已确认文本。</p>
-      <button type="button" disabled aria-describedby="static-note">结束录入</button>
+      <p id="voice-note" class="muted">Mock · {{ microphone }} · {{ processing ? '正在结构化解析' : '预设文本' }}。状态：空白 → 倾听中 → 文本编译完成。倾听中不可切换监听；结束录入保留已确认文本。</p>
+      <button type="button" :disabled="microphone !== 'RECORDING'" aria-describedby="voice-note" @click="emit('stop')">结束录入</button>
     </div>
   </section>
 </template>

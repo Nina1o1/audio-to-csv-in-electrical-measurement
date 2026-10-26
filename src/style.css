@@ -92,3 +92,24 @@ th { font-weight: 500; }
   .filters label { width: 100%; }
   .filters input, .filters select { width: 100%; }
 }
+/* Phase 2 native controls and modal; retain the Phase 1 vertical layout. */
+button:not(:disabled) { cursor: pointer; }
+button.primary:not(:disabled) { color: white; background: #507969; }
+button.danger:not(:disabled) { color: #945347; }
+.mock-panel { background: #f0f0f0; }
+.mock-panel > summary { cursor: pointer; font-size: 17px; font-weight: 650; }
+.mock-panel[open] > summary { margin-bottom: 8px; }
+.mock-panel fieldset { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid #a7b8af; min-width: 0; }
+.mock-panel label { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.mock-panel input[type="checkbox"] { min-height: auto; }
+.feedback:empty { display: none; }
+.feedback { margin: 8px 0; overflow-wrap: anywhere; }
+dialog { width: min(740px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: auto; border: 1px solid #a7b8af; padding: 20px; color: inherit; background: #fafbf9; }
+dialog::backdrop { background: rgb(20 40 30 / 35%); }
+dialog h2, dialog p { margin-bottom: 10px; }
+.dialog-actions { justify-content: flex-end; margin-top: 14px; }
+@media (max-width: 760px) { .mock-panel button { white-space: normal; } }
+
+.confirmation-values > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 12px; margin: 12px 0; align-items: baseline; }
+.confirmation-values dt { font-size: 16px; }
+.confirmation-values dd { font-size: 24px; overflow-wrap: anywhere; }
