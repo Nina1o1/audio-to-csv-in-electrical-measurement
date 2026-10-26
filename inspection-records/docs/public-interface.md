@@ -29,7 +29,7 @@
 | onTranscriptComplete | 每次录入最多一次，只包含已确认文本，不含 interim 文本和控制命令。中断时也保留已确认文本。 |
 | onCommand | 只从已确认结果识别命令；LISTENING 可识别全部命令，RECORDING 仅识别 STOP_INPUT。由 App 判断业务命令是否可执行。 |
 
-“结束输入”和“结束录入”都映射为 STOP_INPUT。录入期间允许用户关闭监听，UI 文案为“结束录入并关闭监听”。
+“结束输入”和“结束录入”都映射为 STOP_INPUT。页面“监听”按钮在录入期间禁用；“结束录入”按钮调用 stopRecording，保留已确认文本并返回监听。stopListening 保留原底层行为，用于页面退出或异常清理，不要求录入期间提供 UI 切换入口。
 
 长停顿导致的正常识别结束按以下固定规则处理，不引入新依赖：
 
@@ -105,6 +105,7 @@ MeasurementUpdate 保持原来的 Partial 类型；M3 仍按属性合并。M2 �
 
 - 只在 IDLE 允许 applyParseResult、updateField、updateMeasurement。
 - 语音按字段、测量属性合并；缺少的属性保持原值。null 不能清空已有值，应忽略该空更新。其他非法解析数据应整批拒绝，不部分合并。
+- App 仅在 M3 为 IDLE 且未进行结构化处理时开放手动编辑；CONFIRMING_SAVE、CONFIRMING_DELETE、SAVING 均冻结草稿。录音中如满足上述条件可编辑，解析合并期间暂时禁用。
 - 手动编辑可用 null 单独清空字段或测量属性。App 将空输入转换为 null，不能把空字符串转换成数字 0。
 - validate 不改数据或状态；requestSave 校验成功才进入 CONFIRMING_SAVE。两者返回全部错误。
 - 必填、字符串、有限非负数字、标准单位和结果枚举都要检查；历史和导出入口采用同一套有效性规则。
