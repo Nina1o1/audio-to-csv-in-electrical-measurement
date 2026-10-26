@@ -5,7 +5,6 @@ type PendingCase = { id: string; input: string; status: 'NEEDS_SPEC' | 'CONFLICT
 const contract = (id: string, input: string, expected: ParseResult): ContractCase => ({ id, input, status: 'CONTRACT', expected })
 const pending = (id: string, input: string, requested: string, reason: string, status: PendingCase['status'] = 'NEEDS_SPEC'): PendingCase => ({ id, input, status, requested, reason })
 const micro = '原始正向候选预期与正式单位词表及未知单位拒绝规则冲突；用户已确认维持词表，不增加微欧支持。保留原始请求供追溯，不计入通过。'
-const kilo = '原始正向候选预期与正式单位词表及未知单位拒绝规则冲突；用户已确认维持词表，不增加千欧支持。保留原始请求供追溯，不计入通过。'
 
 /** All 57 user-supplied cases, preserving IDs and inputs. Pending expectations are descriptive only. */
 export const BUSINESS_CASES = [
@@ -33,13 +32,13 @@ export const BUSINESS_CASES = [
   pending('D02', '接触电阻12000微欧', 'contactResistance = 12', micro, 'CONFLICT'),
   contract('D03', '接触电阻12毫欧', { contactResistance: 12 }),
   contract('D04', '绝缘电阻20000000欧姆', { insulationResistance: 20 }),
-  pending('D05', '绝缘电阻20000千欧', 'insulationResistance = 20', kilo, 'CONFLICT'),
+  contract('D05', '绝缘电阻20000千欧', { insulationResistance: 20 }),
   contract('D06', '绝缘电阻20兆欧', { insulationResistance: 20 }),
   contract('D07', '耐压0.5千伏', { withstandVoltage: 500 }),
   contract('D08', '耐压500伏', { withstandVoltage: 500 }),
-  pending('D09', '接触电阻0.012欧姆，绝缘电阻20000千欧，耐压0.5千伏', 'contactResistance = 12; insulationResistance = 20; withstandVoltage = 500', kilo, 'CONFLICT'),
+  contract('D09', '接触电阻0.012欧姆，绝缘电阻20000千欧，耐压0.5千伏', { contactResistance: 12, insulationResistance: 20, withstandVoltage: 500 }),
   contract('D10', '接触电阻1欧姆', { contactResistance: 1000 }),
-  pending('D11', '绝缘电阻1千欧', 'insulationResistance = 0.001', kilo, 'CONFLICT'),
+  contract('D11', '绝缘电阻1千欧', { insulationResistance: 0.001 }),
   contract('D12', '耐压1.5千伏', { withstandVoltage: 1500 }),
   contract('E01', '接触电阻12，接触电阻15', { contactResistance: 15 }),
   contract('E02', '接触电阻12，接触电阻改成15毫欧', { contactResistance: 15 }),
@@ -64,7 +63,7 @@ export const BUSINESS_CASES = [
   contract('F10', '耐压1000000000伏', { withstandVoltage: 1000000000 }),
   contract('G01', '今天检查3个零件，耐压0.5千伏，接触电阻0.012欧姆', { withstandVoltage: 500, contactResistance: 12 }),
   contract('G02', '接触电阻12毫欧，绝缘电阻20兆欧，接触电阻改成0.015欧姆', { contactResistance: 15, insulationResistance: 20 }),
-  pending('G03', '好的，耐压500伏，绝缘电阻20000千欧，耐压改成0.6千伏', 'withstandVoltage = 600; insulationResistance = 20', kilo, 'CONFLICT'),
+  contract('G03', '好的，耐压500伏，绝缘电阻20000千欧，耐压改成0.6千伏', { withstandVoltage: 600, insulationResistance: 20 }),
   contract('G04', '绝缘电阻20，今天测了3次，耐压500，接触电阻12', { insulationResistance: 20, withstandVoltage: 500, contactResistance: 12 }),
   contract('G05', '接触电阻12，不对，是15毫欧，耐压0.5千伏', { contactResistance: 15, withstandVoltage: 500 }),
 ]
