@@ -2,7 +2,7 @@
 
 技术栈：Vue 3、TypeScript strict、Vite、Vitest。
 
-Phase 2 已完成：共享类型、M1–M5 接口声明、空草稿工厂、严格类型检查和 Vitest 基础配置。页面仍是 Vue 初始模板；业务模块尚未实现。
+当前按最新阶段顺序推进 Phase 1 静态 UI：关键词、实时转写、六项草稿、历史示例和 CSV 操作区纵向排列，附确认弹窗布局预览。所有业务控件禁用；没有语音、解析、存储或下载调用。后续阶段须经用户确认再开始。
 
 ## 开发与验证
 
@@ -20,9 +20,9 @@ npm test
 npm run build
 ```
 
-根 tsconfig 覆盖源码与测试；type-check 额外检查 Node 配置文件。npm test 执行运行时测试，类型反向用例由 type-check 检查。
+根 tsconfig 覆盖源码与测试；type-check 额外检查 Node 配置文件。npm test 执行 Vue 服务端渲染测试，检查静态结构、空值展示和控件禁用，不等同浏览器视觉验收。
 
-Phase 2 使用已有依赖，没有新增第三方包；完整结果见 [阶段报告](documentation/docs/phase-2-report.md)。
+本阶段使用已有依赖，没有新增第三方包；检查结果及已知文档不同步项见 [Phase 1 报告](documentation/docs/phase-1-report.md)。
 
 ## 项目结构
 
@@ -31,10 +31,10 @@ documentation/
   docs/                    已确认的模型、架构、接口和页面要求
   interfaces/              已有模块接口文档目录
 src/
-  app/                     App 协调逻辑和 UI 状态
-  components/              Vue 展示与交互组件
-  contracts/               M1–M5 TypeScript 公开契约，无业务实现
-  shared/                  原共享模型与独立空草稿工厂
+  App.vue                  静态展示快照和页面组合
+  components/              语音、草稿、历史和确认框展示组件
+  contracts/               公开契约实现的预留目录
+  shared/                  UI 使用的共享数据模型
   modules/
     m1-speech-recognition/  语音识别
     m2-text-parser/         文本解析
@@ -44,7 +44,8 @@ src/
 public/                    无需构建处理的静态资源
 tests/
   unit/
-    shared/                共享逻辑与类型约束验证
+    shared/                共享逻辑测试预留目录
+    ui/                    Phase 1 静态渲染测试
     m1-speech-recognition/
     m2-text-parser/
     m3-draft-manager/
