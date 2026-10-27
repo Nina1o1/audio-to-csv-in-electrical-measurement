@@ -99,6 +99,18 @@ describe('M1 proxy authentication and vendor boundary', () => {
     const cookie = await login(); env.SESSION_SECRET += '-rotated'
     expect((await connect(cookie)).status).toBe(401)
   })
+  it.each(['missing', 'expired', 'rotated'] as const)('restores access by explicit login after a %s session, without bypassing authentication', async failure => {
+    let cookie = failure === 'missing' ? '' : await login()
+    if (failure === 'expired') vi.advanceTimersByTime(8 * 3600 * 1000)
+    if (failure === 'rotated') env.SESSION_SECRET += '-rotated'
+    expect((await connect(cookie)).status).toBe(401)
+    expect(upstreamFetch).not.toHaveBeenCalled()
+    cookie = await login()
+    expect((await connect(cookie)).status).toBe(101)
+    expect(upstreamFetch).toHaveBeenCalledOnce()
+    pair[1].dispatchEvent(new Event('close'))
+    expect(vi.getTimerCount()).toBe(0)
+  })
   it('clears the browser cookie on logout without exposing business APIs', async () => {
     const result = await worker.fetch(request('logout', 'POST'), env)
     expect(result.headers.get('Set-Cookie')).toContain('Max-Age=0')

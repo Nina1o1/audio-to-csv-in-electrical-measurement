@@ -352,8 +352,8 @@ describe('Checkpoint A: actual App component bindings', () => {
     ]))
     const latest = JSON.parse(contents ?? '[]')[0]
     expect(details).toEqual({
-      '记录 ID': latest.id, '工单号': latest.workOrder, '零件号': latest.partNumber,
-      '接触电阻（mΩ）': '0', '绝缘电阻（MΩ）': '200', '耐压（V）': '1500',
+      '记录 ID': latest.id, '工单': latest.workOrder, '料号': latest.partNumber,
+      '接触电阻（mΩ）': '0', '绝缘电阻（MΩ）': '200', '耐电压（V）': '1500',
       '检验结果': 'PASS', '创建时间（UTC）': latest.createdAt, '修改时间（UTC）': latest.updatedAt,
     })
     await page.click('取消')
@@ -460,7 +460,7 @@ describe('Checkpoint A: actual App component bindings', () => {
     })
     const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:csv')
     const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
-    const header = '\uFEFF工单号,零件号,接触电阻值,绝缘电阻值,耐压值,检验结果,创建时间,修改时间'
+    const header = '\uFEFF工单,料号,接触电阻,绝缘电阻,耐电压,检验结果,创建时间,修改时间'
     const firstRow = `ALPHA,'\u0085=1,0 mΩ,200 MΩ,1500 V,PASS,${time},${time}`
     const secondRow = `BETA,P-002,0 mΩ,200 MΩ,1500 V,PASS,${time},${time}`
     const search = walk(page.root).find(el => el.tag === 'input' && el.type === 'search')!
@@ -549,14 +549,14 @@ describe('error Toast presentation', () => {
     await page.click('保存')
     expect(alerts(page)).toHaveLength(1)
     expect(alerts(page)[0]!.textContent).toContain('请修正以下草稿错误。')
-    expect(alerts(page)[0]!.textContent).toContain('工单号：必填')
+    expect(alerts(page)[0]!.textContent).toContain('工单：必填')
     expect(alerts(page)[0]!.props.class).toBe('error-toast')
     expect(walk(alerts(page)[0]!).some(el => el.tag === 'button')).toBe(false)
     await vi.advanceTimersByTimeAsync(2000)
     await page.click('导出全部记录至 CSV')
     expect(alerts(page)).toHaveLength(1)
     expect(alerts(page)[0]!.textContent).toBe('暂无可导出的记录。')
-    expect(page.root.textContent).not.toContain('工单号：必填')
+    expect(page.root.textContent).not.toContain('工单：必填')
     expect(page.input('draft-work-order')).toBe(draftInput)
     expect(draftInput.matches(':disabled')).toBe(false)
     await vi.advanceTimersByTimeAsync(2999)
@@ -579,7 +579,7 @@ describe('error Toast presentation', () => {
     await vi.advanceTimersByTimeAsync(2000)
     await page.click('保存')
     await vi.advanceTimersByTimeAsync(2999)
-    expect(alerts(page)[0]!.textContent).toContain('工单号：必填')
+    expect(alerts(page)[0]!.textContent).toContain('工单：必填')
     await vi.advanceTimersByTimeAsync(1)
     expect(alerts(page)).toHaveLength(0)
     await page.click('导出全部记录至 CSV')

@@ -113,7 +113,7 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     for (const timer of session.timers) cancel(timer)
     session.timers.clear()
     session.socket.onopen = null; session.socket.onmessage = null
-    session.socket.onclose = event => session.trace('websocket-closed', { sessionId: session.id, code: event.code, clean: event.wasClean, finalReceived: session.finalReceived })
+    session.socket.onclose = event => session.trace('websocket-closed', { sessionId: session.id, code: event?.code, clean: event?.wasClean, reasonLength: event?.reason?.length, clientCloseRequested: true, finalReceived: session.finalReceived })
     session.socket.onerror = null
     try { session.socket.close(1000) } catch { /* A failed/connecting socket can already be closed. */ }
   }
@@ -352,9 +352,16 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
         fail(speechError('RECOGNITION_FAILED', '语音服务返回了无效或不完整的识别结果。'))
       }
     }
-    socket.onerror = () => { if (valid()) fail(speechError('RECOGNITION_FAILED', '语音连接中断。')) }
+    socket.onerror = () => {
+      if (!valid()) return
+      // Native onerror does not expose HTTP status. Preserve the phase before
+      // fail() requests cleanup; never infer authentication failure from this event alone.
+      rec.trace('websocket-error', { sessionId: session.id, state, opened: session.ready, readyState: socket.readyState })
+      fail(speechError('RECOGNITION_FAILED', '语音连接中断。'))
+    }
     socket.onclose = event => {
-      rec.trace('websocket-closed', { sessionId: session.id, code: event?.code, clean: event?.wasClean, finalReceived: session.finalReceived })
+      // Free-form peer reasons can contain sensitive text; retain only their length.
+      rec.trace('websocket-closed', { sessionId: session.id, code: event?.code, clean: event?.wasClean, reasonLength: event?.reason?.length, clientCloseRequested: false, finalReceived: session.finalReceived })
       if (valid()) fail(speechError('RECOGNITION_FAILED', '语音连接在最终结果返回前关闭。'))
     }
     return session

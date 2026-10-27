@@ -6,9 +6,9 @@ import { downloadCsv } from './browser-download'
 
 // Export projection is separate from record validation: IDs remain required internally.
 const COLUMNS = [
-  ['workOrder', '工单号', ''], ['partNumber', '零件号', ''],
-  ['contactResistance', '接触电阻值', 'mΩ'], ['insulationResistance', '绝缘电阻值', 'MΩ'],
-  ['withstandVoltage', '耐压值', 'V'], ['result', '检验结果', ''],
+  ['workOrder', '工单', ''], ['partNumber', '料号', ''],
+  ['contactResistance', '接触电阻', 'mΩ'], ['insulationResistance', '绝缘电阻', 'MΩ'],
+  ['withstandVoltage', '耐电压', 'V'], ['result', '检验结果', ''],
   ['createdAt', '创建时间', ''], ['updatedAt', '修改时间', ''],
 ] as const satisfies readonly (readonly [keyof InspectionRecord, string, string])[]
 const RECORD_KEYS = ['id', ...COLUMNS.map(([field]) => field)] as const

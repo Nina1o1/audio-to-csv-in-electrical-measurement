@@ -11,8 +11,8 @@ import type { DraftFields } from './shared/data-models'
 
 const ui = reactive(useManualWorkflow())
 const fieldLabels: Record<keyof DraftFields, string> = {
-  workOrder: '工单号', partNumber: '零件号', contactResistance: '接触电阻（mΩ）',
-  insulationResistance: '绝缘电阻（MΩ）', withstandVoltage: '耐压（V）', result: '检验结果',
+  workOrder: '工单', partNumber: '料号', contactResistance: '接触电阻（mΩ）',
+  insulationResistance: '绝缘电阻（MΩ）', withstandVoltage: '耐电压（V）', result: '检验结果',
 }
 const { notification, statusMessage, authStatusMessage, actions } = useErrorPresentation(ui, fieldLabels)
 const confirming = computed(() => !ui.awaitingCheck

@@ -19,7 +19,7 @@ function input(field: keyof DraftFields, event: Event) {
 const measurementRows = [
   { field: 'contactResistance', label: '接触电阻', displayUnit: 'mΩ' },
   { field: 'insulationResistance', label: '绝缘电阻', displayUnit: 'MΩ' },
-  { field: 'withstandVoltage', label: '耐压', displayUnit: 'V' },
+  { field: 'withstandVoltage', label: '耐电压', displayUnit: 'V' },
 ] as const
 </script>
 
@@ -34,13 +34,13 @@ const measurementRows = [
       <thead><tr><th scope="col">指标名称</th><th scope="col">记录</th><th scope="col" class="unit-column">单位</th></tr></thead>
       <tbody>
         <tr>
-          <th scope="row"><label :for="`${prefix}-work-order`">工单号</label></th>
-          <td><input :id="`${prefix}-work-order`" :value="draft.workOrder ?? ''" placeholder="请输入工单号" @input="input('workOrder', $event)" :disabled="disabled" aria-describedby="manual-note"></td>
+          <th scope="row"><label :for="`${prefix}-work-order`">工单</label></th>
+          <td><input :id="`${prefix}-work-order`" :value="draft.workOrder ?? ''" placeholder="未填写" @input="input('workOrder', $event)" :disabled="disabled" aria-describedby="manual-note"></td>
           <td class="unit-column">—</td>
         </tr>
         <tr>
-          <th scope="row"><label :for="`${prefix}-part-number`">零件号</label></th>
-          <td><input :id="`${prefix}-part-number`" :value="draft.partNumber ?? ''" placeholder="请输入零件号" @input="input('partNumber', $event)" :disabled="disabled" aria-describedby="manual-note"></td>
+          <th scope="row"><label :for="`${prefix}-part-number`">料号</label></th>
+          <td><input :id="`${prefix}-part-number`" :value="draft.partNumber ?? ''" placeholder="未填写" @input="input('partNumber', $event)" :disabled="disabled" aria-describedby="manual-note"></td>
           <td class="unit-column">—</td>
         </tr>
         <tr v-for="row in measurementRows" :key="row.field">

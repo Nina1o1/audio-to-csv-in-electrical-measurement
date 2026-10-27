@@ -23,6 +23,7 @@ class Commands {
 }
 class Socket {
   static instances: Socket[] = []
+  readyState = 0
   bufferedAmount = 0
   onopen: (() => void) | null = null
   onmessage: ((event: { data: unknown }) => void) | null = null
@@ -31,7 +32,7 @@ class Socket {
   send = vi.fn<(data: string) => void>()
   close = vi.fn()
   constructor(readonly url: URL) { Socket.instances.push(this) }
-  open() { this.onopen?.() }
+  open() { this.readyState = 1; this.onopen?.() }
   result(text: string, sn = 0, status = 1, extra: object = {}) {
     this.onmessage?.({ data: JSON.stringify({ code: 0, data: { status, result: { sn, ws: [{ cw: [{ w: text }] }], ...extra } } }) })
   }
@@ -243,6 +244,23 @@ describe('M1 confirmed voice commands', () => {
 })
 
 describe('M1 IAT recording and completion', () => {
+  it('diagnoses a failed handshake before cleanup and preserves abnormal close metadata without peer text', async () => {
+    vi.stubGlobal('location', { href: 'https://inspection.example/?m1Debug=1', origin: 'https://inspection.example', search: '?m1Debug=1' })
+    const log = vi.spyOn(console, 'debug').mockImplementation(() => undefined), errors = vi.fn()
+    module.onError(errors)
+    await listen(); module.startRecording(); await Promise.resolve()
+    const socket = currentSocket()
+    socket.readyState = 3
+    socket.onerror?.()
+    Reflect.apply(socket.onclose!, socket, [{ code: 1006, wasClean: false, reason: 'private-peer-detail' }])
+    const entries = log.mock.calls.map(call => call[1])
+    expect(entries).toContainEqual(expect.objectContaining({ event: 'websocket-error', state: 'RECORDING', opened: false, readyState: 3 }))
+    expect(entries).toContainEqual(expect.objectContaining({ event: 'websocket-closed', code: 1006, clean: false, reasonLength: 19, clientCloseRequested: true }))
+    expect(JSON.stringify(entries)).not.toContain('private-peer-detail')
+    expect(errors).toHaveBeenCalledOnce(); expect(module.getState()).toBe('IDLE')
+    expect(socket.send).not.toHaveBeenCalled(); expect(audioStop).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
+  })
   it('retains confirmed ordinary text that was held as a possible stop-command prefix when interrupted', async () => {
     const complete = vi.fn(); module.onTranscriptComplete(complete)
     await record(); currentSocket().result('普通正文，结束输')

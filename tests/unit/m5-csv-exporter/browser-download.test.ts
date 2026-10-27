@@ -31,7 +31,7 @@ describe('M5 browser download resource lifecycle', () => {
     })])
     const filename = ' 质检 .CSV'
     const result = createCsvExporter().export(input, { filename, includeBom })
-    const csv = '工单号,零件号,接触电阻值,绝缘电阻值,耐压值,检验结果,创建时间,修改时间'
+    const csv = '工单,料号,接触电阻,绝缘电阻,耐电压,检验结果,创建时间,修改时间'
       + `\r\n'\u0085=1,"零件,""甲""\r\n乙",0.015 mΩ,200 MΩ,1500 V,PASS,${time},${time}`
     const expected = includeBom === false ? csv : `\uFEFF${csv}`
     const blob = env.createObjectURL.mock.calls[0]?.[0]

@@ -7,7 +7,7 @@ import { downloadCsv } from '../../../src/modules/m5-csv-exporter/browser-downlo
 vi.mock('../../../src/modules/m5-csv-exporter/browser-download', () => ({ downloadCsv: vi.fn() }))
 
 const TIME = '2026-10-26T01:30:00.000Z'
-const HEADER = '工单号,零件号,接触电阻值,绝缘电阻值,耐压值,检验结果,创建时间,修改时间'
+const HEADER = '工单,料号,接触电阻,绝缘电阻,耐电压,检验结果,创建时间,修改时间'
 const exporter = createCsvExporter()
 function record(overrides: Partial<InspectionRecord> = {}): InspectionRecord {
   return { id: 'r1', workOrder: 'WO-001', partNumber: 'P-007', contactResistance: 0,

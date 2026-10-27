@@ -42,6 +42,55 @@ let dispose: (() => void) | undefined
 afterEach(() => { dispose?.(); dispose = undefined; vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('real M1 → App → M2 → M3 → App → M4, with browser/audio boundaries replaced', () => {
+  it('recovers explicitly through proxy login after a failed handshake, ignoring duplicate commands and old callbacks', async () => {
+    vi.useFakeTimers(); Commands.instances = []; Socket.instances = []
+    vi.stubGlobal('SpeechRecognition', Commands); vi.stubGlobal('WebSocket', Socket)
+    vi.stubGlobal('location', { href: 'https://inspection.example/', origin: 'https://inspection.example' })
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() })
+    const login = vi.fn(async () => new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', login)
+    const leases: { stop: ReturnType<typeof vi.fn>; start: ReturnType<typeof vi.fn>; send: (frame: Uint8Array) => void }[] = []
+    vi.mocked(captureAudio).mockImplementation(async (_abort, send, _fault, prepared) => {
+      const lease = { stop: vi.fn(), start: vi.fn(), send }; leases.push(lease)
+      prepared?.(lease.start); return lease
+    })
+    const speech = createSpeechRecognition(), errors = vi.fn(), complete = vi.fn()
+    speech.onError(errors); speech.onTranscriptComplete(complete)
+    const ui = reactive(useManualWorkflow({ speechRecognition: speech }))
+    dispose = ui.dispose; ui.initialize()
+    const first = ui.toggleListening(); currentCommand().onstart?.(); await first
+    const oldCommand = currentCommand(), lateError = oldCommand.onerror!, lateEnd = oldCommand.onend!
+    oldCommand.result('开始输入'); oldCommand.result('开始输入'); await flush()
+    expect(leases).toHaveLength(1); expect(Socket.instances).toHaveLength(1)
+    lateError({ error: 'aborted' }); lateEnd()
+    expect(ui.microphone).toBe('RECORDING'); expect(errors).not.toHaveBeenCalled()
+    const old = Socket.instances[0]!, oldFault = old.onerror!, oldClose = old.onclose!
+    oldFault(); oldClose(); await flush()
+    expect(ui.microphone).toBe('IDLE'); expect(errors).toHaveBeenCalledOnce()
+    expect(old.send).not.toHaveBeenCalled(); expect(leases[0]!.start).not.toHaveBeenCalled()
+    expect(leases[0]!.stop).toHaveBeenCalledOnce(); expect(complete).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+    await ui.loginVoice('test-access-password-only')
+    expect(login).toHaveBeenCalledOnce(); expect(ui.authMessage).toContain('登录成功')
+    const next = ui.toggleListening(); currentCommand().onstart?.(); await next
+    currentCommand().result('开始输入'); await flush()
+    const socket = Socket.instances[1]!
+    oldFault(); oldClose(); lateError({ error: 'network' }); lateEnd()
+    expect(ui.microphone).toBe('RECORDING'); expect(errors).toHaveBeenCalledOnce()
+    expect(socket.send).not.toHaveBeenCalled()
+    socket.onopen?.(); expect(leases[1]!.start).toHaveBeenCalledOnce()
+    leases[1]!.send(new Uint8Array(1280)); expect(socket.send).toHaveBeenCalledOnce()
+    socket.result('工单A2301，', 0, 1); expect(ui.confirmedText).toBe('工单A2301，')
+    socket.result('接触电阻12毫欧。', 1, 1); expect(ui.confirmedText).toContain('12毫欧')
+    socket.result('结束输入。', 2, 2); await flush(); currentCommand().onstart?.(); await flush()
+    expect(ui.draft).toMatchObject({ workOrder: 'A2301', contactResistance: 12 })
+    expect(complete).toHaveBeenCalledTimes(2); expect(errors).toHaveBeenCalledOnce()
+    expect(ui.microphone).toBe('LISTENING'); expect(ui.speechError).toBe('')
+    currentCommand().result('开始输入'); await flush()
+    expect(Socket.instances).toHaveLength(3)
+    ui.stopInput(); currentCommand().onstart?.(); await flush()
+    ui.dispose(); expect(vi.getTimerCount()).toBe(0)
+  })
   it.each(['natural', 'voice-stop', 'interrupted', 'offline'] as const)('preserves data contracts and save ordering after %s completion', async ending => {
     vi.useFakeTimers(); Commands.instances = []; Socket.instances = []
     vi.stubGlobal('SpeechRecognition', Commands); vi.stubGlobal('WebSocket', Socket)
