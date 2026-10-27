@@ -1,0 +1,39 @@
+{
+  "source": "User-provided diagnostic entries, sequences 1-28; derived summary, not a full original log",
+  "observedAt": "2026-10-27T14:37:11.770Z",
+  "origin": "https://localhost:8788",
+  "browser": "Chrome/156.0.0.0",
+  "listeningId": 1,
+  "recordingId": 2,
+  "sessionId": 1,
+  "monotonicAtMs": {
+    "listeningStarted": 2278.199999988079,
+    "firstInterimObserved": 4339.400000035763,
+    "finalCommandMatched": 6703.699999988079,
+    "commandEmitted": 6704.300000011921,
+    "recordingRequested": 6704.699999988079,
+    "microphoneReady": 6916.100000023842,
+    "audioPrepared": 6918.199999988079,
+    "websocketConnecting": 6918.400000035763,
+    "websocketOpened": 8658.800000011921,
+    "firstFloat32Observed": 8665.400000035763,
+    "firstPcmFrame": 8696.300000011921,
+    "firstPcmSent": 8696.600000023842
+  },
+  "command": "START_INPUT",
+  "matched": true,
+  "contextSampleRate": 44100,
+  "trackSampleRate": 48000,
+  "contextState": "running",
+  "frameBytes": 1280,
+  "frameDurationMs": 40,
+  "sampledFrameSequences": [1, 25, 50, 75],
+  "sampledQueuedBytes": [0, 0, 0, 0],
+  "sampledBufferedBytesAfterSend": [1789, 1789, 1789, 1789],
+  "limitations": [
+    "No actual speech-onset timestamp",
+    "No first IAT result or final-completion timestamp within supplied entries",
+    "One successful command observation; does not reproduce the earlier no-response failure",
+    "No matching before-change real-device baseline"
+  ]
+}

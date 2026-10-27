@@ -20,16 +20,22 @@ const environment = element('environment', HTMLElement)
 const transport = element('transport', HTMLElement)
 environment.textContent = `环境：${navigator.userAgent}；安全上下文：${window.isSecureContext}；来源：${location.origin}`
 
-type Entry = { instance: number; sequence: number; timestamp: string; kind: string; payload: unknown }
+type Entry = { instance: number; sequence: number; atMs: number; timestamp: string; kind: string; payload: unknown }
 let entries: Entry[] = []
 let sequence = 0, instance = 0
 let speech: SpeechRecognitionModule | undefined
 let subscriptions: (() => void)[] = []
 
 function log(kind: string, payload: unknown, owner = instance): void {
-  entries.push({ instance: owner, sequence: ++sequence, timestamp: new Date().toISOString(), kind, payload })
+  entries.push({ instance: owner, sequence: ++sequence, atMs: performance.now(), timestamp: new Date().toISOString(), kind, payload })
   if (entries.length > 500) entries.shift()
   events.textContent = JSON.stringify(entries, null, 2)
+}
+
+const nativeDebug = console.debug
+console.debug = (...args: unknown[]) => {
+  nativeDebug(...args)
+  if (args[0] === '[M1]') log('m1-diagnostic', args[1])
 }
 
 // Manual-only metadata trace. Preserve native transport behavior; never log URLs,
@@ -108,9 +114,9 @@ function create(): void {
     }),
     current.onTranscriptUpdate(value => {
       confirmed.textContent = value.confirmedText; interim.textContent = value.interimText
-      log('update', value, owner)
+      log('update', { confirmedLength: value.confirmedText.length, interimLength: value.interimText.length }, owner)
     }),
-    current.onTranscriptComplete(value => { complete.textContent = value.text; log('complete', value, owner) }),
+    current.onTranscriptComplete(value => { complete.textContent = value.text; log('complete', { confirmedLength: value.text.length }, owner) }),
     current.onError(value => {
       lastError.textContent = `${value.code}：${value.message}`
       log('error', value, owner)
@@ -155,5 +161,5 @@ async function authenticate(path: 'login' | 'logout'): Promise<void> {
 }
 click('login', () => { void authenticate('login') })
 click('logout', () => { release(); void authenticate('logout') })
-window.addEventListener('pagehide', () => { release(); window.WebSocket = NativeWebSocket })
+window.addEventListener('pagehide', () => { release(); window.WebSocket = NativeWebSocket; console.debug = nativeDebug })
 create()

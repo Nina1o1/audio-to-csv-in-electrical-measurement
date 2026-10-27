@@ -207,6 +207,26 @@ describe('M1 confirmed voice commands', () => {
     currentCommand().result(text, true, 1)
     expect(received).toHaveBeenCalledTimes(2) // A genuinely new utterance is allowed.
   })
+  it('diagnoses interim, unmatched final and emitted START_INPUT while still LISTENING', async () => {
+    vi.stubGlobal('location', { href: 'https://inspection.example/?m1Debug=1', origin: 'https://inspection.example', search: '?m1Debug=1' })
+    const log = vi.spyOn(console, 'debug').mockImplementation(() => undefined), received = vi.fn()
+    module.onCommand(received); await listen()
+    currentCommand().result('开始输入', false)
+    expect(received).not.toHaveBeenCalled()
+    currentCommand().result('开始输入接触电阻', true)
+    expect(received).not.toHaveBeenCalled()
+    currentCommand().result('开始输入。', true, 1)
+    expect(received).toHaveBeenCalledExactlyOnceWith('START_INPUT')
+    const entries = log.mock.calls.map(call => call[1] as { event: string; listeningId?: number; matched?: boolean; command?: string })
+    expect(entries.map(entry => entry.event)).toEqual([
+      'command-listening-requested', 'command-listening-started', 'command-result-interim',
+      'command-result-final', 'command-result-final', 'command-event-emitted',
+    ])
+    expect(entries.filter(entry => entry.event === 'command-result-final').map(entry => entry.matched)).toEqual([false, true])
+    expect(new Set(entries.map(entry => entry.listeningId)).size).toBe(1)
+    expect(JSON.stringify(entries)).not.toMatch(/开始输入|接触电阻/)
+    expect(module.getState()).toBe('LISTENING')
+  })
   it.each(['不要保存', '确认删除后检查', '今天修改了工单', '保留这个零件', '保存，确认保存'])('does not match a command inside %s', async text => {
     const received = vi.fn(); module.onCommand(received); await listen()
     currentCommand().result(text); expect(received).not.toHaveBeenCalled()
@@ -285,6 +305,38 @@ describe('M1 IAT recording and completion', () => {
     expect(JSON.parse(socket.send.mock.calls.at(-1)![0])).toEqual({ data: { status: 2 } })
     expect(signal.aborted).toBe(true); expect(audioStop).toHaveBeenCalledTimes(1)
     finishSocket(); expect(module.getState()).toBe('LISTENING')
+  })
+  it.each([-60_000, 60_000])('keeps PCM cadence when wall clock moves by %ims', async jump => {
+    const errors = vi.fn(), complete = vi.fn()
+    module.onError(errors); module.onTranscriptComplete(complete)
+    await record(); frame(new Uint8Array(1280))
+    vi.advanceTimersByTime(40)
+    vi.setSystemTime(Date.now() + jump)
+    for (let i = 0; i < 100; i++) { frame(new Uint8Array(1280)); vi.advanceTimersByTime(40) }
+    expect(errors).not.toHaveBeenCalled()
+    expect(currentSocket().send).toHaveBeenCalledTimes(101)
+    module.stopRecording(); currentSocket().result('尾字。', 0, 2); currentCommand().ready()
+    expect(complete).toHaveBeenCalledExactlyOnceWith({ text: '尾字。' })
+  })
+  it('traces sampled frame metadata and synchronous result events without text or audio', async () => {
+    vi.stubGlobal('location', { href: 'https://inspection.example/?m1Debug=1', origin: 'https://inspection.example', search: '?m1Debug=1' })
+    const log = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
+    await record()
+    for (let i = 0; i < 50; i++) { frame(new Uint8Array(1280)); vi.advanceTimersByTime(40) }
+    currentSocket().result('接触电阻十二毫欧。')
+    const entries = log.mock.calls.map(call => call[1] as { event: string; atMs: number; recordingId?: number }).filter(entry => entry.recordingId !== undefined)
+    expect(entries.filter(entry => entry.event === 'audio-frame-captured')).toHaveLength(3)
+    expect(entries.filter(entry => entry.event === 'audio-frame-sent')).toHaveLength(3)
+    const received = entries.find(entry => entry.event === 'websocket-message')!
+    const emitted = entries.find(entry => entry.event === 'transcript-event-emitted')!
+    expect(emitted.atMs - received.atMs).toBe(0)
+    expect(new Set(entries.map(entry => entry.recordingId)).size).toBe(1)
+    expect(JSON.stringify(entries)).not.toMatch(/接触电阻|audio\/L16|wss:|api_key|secret/)
+    module.stopRecording(); vi.advanceTimersByTime(120)
+    currentSocket().end(); currentCommand().ready()
+    const final = log.mock.calls.map(call => call[1] as { event: string; atMs: number })
+    expect(final.find(entry => entry.event === 'transcript-complete-emitted')!.atMs
+      - final.find(entry => entry.event === 'recording-stopped')!.atMs).toBe(120)
   })
   it('does not accumulate audio indefinitely from ordinary five-millisecond timer jitter', async () => {
     const errors = vi.fn(); module.onError(errors); await record()
@@ -504,6 +556,28 @@ describe('natural utterance completion, command continuation and planned IAT rot
     module.stopListening()
     expect(vi.getTimerCount()).toBe(0)
   })
+  it('preserves all 1625 numbered PCM frames across 65 seconds and a retiring final', async () => {
+    const complete = vi.fn(), errors = vi.fn(), sentIds: number[] = []
+    module.onTranscriptComplete(complete); module.onError(errors)
+    await record(); const first = currentSocket()
+    const watch = (socket: Socket) => socket.send.mockImplementation(raw => {
+      const data = (JSON.parse(raw) as { data: { status: number; audio?: string } }).data
+      if (data.status === 2) return
+      const binary = atob(data.audio!)
+      sentIds.push(binary.charCodeAt(0) | binary.charCodeAt(1) << 8)
+    })
+    watch(first); first.result('第一段，')
+    for (let i = 0; i < 1625; i++) {
+      const pcm = new Uint8Array(1280); new DataView(pcm.buffer).setUint16(0, i, true)
+      frame(pcm); vi.advanceTimersByTime(40)
+      if (i === 1299) { watch(currentSocket()); currentSocket().open() }
+      if (i === 1380) first.result('尾字。', 1, 2)
+    }
+    expect(sentIds).toEqual(Array.from({ length: 1625 }, (_, i) => i))
+    expect(complete).not.toHaveBeenCalled(); expect(errors).not.toHaveBeenCalled()
+    module.stopRecording(); currentSocket().result('第二段。', 0, 2); currentCommand().ready()
+    expect(complete).toHaveBeenCalledExactlyOnceWith({ text: '第一段，尾字。第二段。' })
+  })
   it('streams a full sixty seconds at PCM cadence across rotation and completes once on stop', async () => {
     const errors = vi.fn(), complete = vi.fn()
     module.onError(errors); module.onTranscriptComplete(complete)
@@ -702,7 +776,10 @@ describe('natural utterance completion, command continuation and planned IAT rot
     expect(complete).toHaveBeenCalledExactlyOnceWith({ text: '正文' }); expect(vi.getTimerCount()).toBe(0)
   })
   it('rejects stale delayed timers after the browser has missed the physical-session deadline', async () => {
-    await record(); vi.setSystemTime(new Date(Date.now() + 60_000)); frame(new Uint8Array(1280))
+    await record()
+    const elapsed = performance.now()
+    vi.spyOn(performance, 'now').mockReturnValue(elapsed + 60_000)
+    frame(new Uint8Array(1280))
     expect(module.getState()).toBe('IDLE')
   })
 })

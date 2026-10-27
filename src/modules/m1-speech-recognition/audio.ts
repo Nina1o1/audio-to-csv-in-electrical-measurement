@@ -1,3 +1,5 @@
+import type { Diagnostic } from './debug'
+
 /** Streaming area resampling keeps fractional input positions across worklet messages. */
 export class PcmFrames {
   private total = 0
@@ -64,6 +66,7 @@ export async function captureAudio(
   onFrame: (frame: Uint8Array) => void,
   onFailure: () => void,
   onPrepared?: (start: () => void) => void,
+  trace: Diagnostic = () => undefined,
 ): Promise<AudioInput> {
   if (!globalThis.navigator?.mediaDevices?.getUserMedia || !globalThis.AudioContext || !globalThis.AudioWorkletNode) {
     throw { code: 'NOT_SUPPORTED', message: '当前浏览器不支持音频采集。' }
@@ -101,6 +104,8 @@ export async function captureAudio(
       for (const track of stream.getTracks()) track.stop()
       throw new Error('Audio capture cancelled.')
     }
+    const settings = stream.getAudioTracks()[0]?.getSettings?.()
+    trace('microphone-ready', { sampleRate: context.sampleRate, trackSampleRate: settings?.sampleRate, channels: settings?.channelCount, echoCancellation: settings?.echoCancellation, noiseSuppression: settings?.noiseSuppression, contextState: context.state })
     packer = new PcmFrames(context.sampleRate, onFrame)
     url = URL.createObjectURL(new Blob([processor], { type: 'text/javascript' }))
     await context.audioWorklet.addModule(url)
@@ -111,12 +116,17 @@ export async function captureAudio(
     filter = context.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 7000
     node = new AudioWorkletNode(context, 'm1-capture', { channelCount: 1, channelCountMode: 'explicit' })
     mute = context.createGain(); mute.gain.value = 0
+    let firstSamples = true
     node.port.onmessage = (event: MessageEvent<unknown>) => {
-      if (!stopped && event.data instanceof Float32Array) packer?.push(event.data)
+      if (!stopped && event.data instanceof Float32Array) {
+        if (firstSamples) { firstSamples = false; trace('audio-capture-started', { samples: event.data.length }) }
+        packer?.push(event.data)
+      }
     }
     node.onprocessorerror = () => { if (!stopped) onFailure() }
     for (const track of stream.getAudioTracks()) track.onended = () => { if (!stopped) onFailure() }
     context.onstatechange = () => {
+      trace('audio-context-state', { state: context?.state })
       if (!stopped && context?.state !== 'running') onFailure()
     }
     let started = false

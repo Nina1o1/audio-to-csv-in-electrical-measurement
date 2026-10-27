@@ -12,7 +12,7 @@ describe('IAT decoding and text ledger', () => {
     expect(result(1, '').result?.text).toBe('')
   })
   it('supports final frames with no result object', () => {
-    expect(decodeIat('{"code":0,"data":{"status":2}}')).toEqual({ ended: true })
+    expect(decodeIat('{"code":0,"data":{"status":2}}')).toEqual({ status: 2, ended: true })
   })
   it.each([
     null, '{}', '{', '{"code":0}', '{"code":1}',

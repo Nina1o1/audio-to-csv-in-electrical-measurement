@@ -11,9 +11,11 @@ const root = fileURLToPath(new URL('../../', import.meta.url))
 const { values } = parseArgs({ options: {
   local: { type: 'boolean', default: false },
   app: { type: 'boolean', default: false },
-  port: { type: 'string', default: '8787' },
+  debug: { type: 'boolean', default: false },
+  port: { type: 'string' },
 } })
-const { local, app, port } = values
+const { local, app } = values
+const port = values.port ?? (app ? '5173' : '8787')
 if (!/^\d+$/.test(port) || Number(port) < 1024 || Number(port) > 65535) {
   throw new Error('--port must be an integer between 1024 and 65535.')
 }
@@ -25,6 +27,11 @@ if (local && !existsSync(join(root, 'infrastructure/m1-speech-proxy/.dev.vars'))
 const outDir = await mkdtemp(join(tmpdir(), app ? 'm1-app-' : 'm1-acceptance-'))
 await build({
   root, ...(app ? {} : { configFile: false }),
+  ...(values.debug ? { mode: 'm1-debug' } : {}),
+  ...(values.debug && app ? { plugins: [{
+    name: 'm1-local-debug-panel',
+    transformIndexHtml: { order: 'pre', handler: () => [{ tag: 'script', attrs: { type: 'module', src: '/tests/manual/m1-debug-panel.ts' }, injectTo: 'body' }] },
+  }] } : {}),
   build: {
     outDir, emptyOutDir: false,
     ...(app ? {} : { rolldownOptions: { input: fileURLToPath(new URL('./m1-acceptance.html', import.meta.url)) } }),

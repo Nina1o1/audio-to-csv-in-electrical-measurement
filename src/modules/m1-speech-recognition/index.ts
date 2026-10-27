@@ -4,17 +4,20 @@ import type {
 } from '../../contracts/m1-speech-recognition'
 import { captureAudio, type AudioInput } from './audio'
 import { commandRecognition, observeOffline, proxySocket, type CommandRecognition } from './browser'
+import { m1Diagnostic, type Diagnostic } from './debug'
 import { audioFrame, commandOf, decodeIat, IatText, recordingText } from './protocol'
 
 type Timer = ReturnType<typeof setTimeout>
 type Listener<T> = { callback: (value: T) => void }
 type Session = {
+  id: number; trace: Diagnostic;
   socket: WebSocket; text: IatText; ready: boolean; first: boolean; ended: boolean;
-  draining: boolean; used: boolean; opened: number;
+  finalReceived: boolean; draining: boolean; used: boolean; opened: number;
   sendAt?: number;
   timers: Set<Timer>;
 }
 type Recording = {
+  trace: Diagnostic; captured: number; sent: number;
   abort: AbortController; audio?: AudioInput; sessions: Session[]; active?: Session; prepared?: Session;
   startAudio?: () => void;
   queue: Uint8Array[]; queuedBytes: number; pump?: Timer; cut?: Timer; prepare?: Timer;
@@ -105,11 +108,13 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     }
   }
   function closeSession(session: Session): void {
+    session.trace('websocket-close-request', { sessionId: session.id, finalReceived: session.finalReceived, draining: session.draining, readyState: session.socket.readyState, bufferedBytes: session.socket.bufferedAmount })
     session.ended = true
     for (const timer of session.timers) cancel(timer)
     session.timers.clear()
     session.socket.onopen = null; session.socket.onmessage = null
-    session.socket.onclose = null; session.socket.onerror = null
+    session.socket.onclose = event => session.trace('websocket-closed', { sessionId: session.id, code: event.code, clean: event.wasClean, finalReceived: session.finalReceived })
+    session.socket.onerror = null
     try { session.socket.close(1000) } catch { /* A failed/connecting socket can already be closed. */ }
   }
   function release(rec: Recording): void {
@@ -119,9 +124,11 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     if (rec.prepared && !rec.sessions.includes(rec.prepared)) closeSession(rec.prepared)
     rec.queue = []; rec.queuedBytes = 0
   }
-  function publish(confirmedText: string, interimText = ''): void {
+  function publish(confirmedText: string, interimText = '', trace = recording?.trace): void {
     if (update.confirmedText === confirmedText && update.interimText === interimText) return
-    update = { confirmedText, interimText }; emit(updates, () => ({ ...update }))
+    update = { confirmedText, interimText }
+    trace?.('transcript-event-emitted', { confirmedLength: confirmedText.length, interimLength: interimText.length })
+    emit(updates, () => ({ ...update }))
   }
   function textOf(rec: Recording): TranscriptUpdate {
     let confirmedText = '', interimText = '', blocked = false
@@ -146,7 +153,8 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     const text = textOf(rec).confirmedText
     rec.done = true; recording = undefined
     release(rec); cancelAll()
-    publish(text)
+    publish(text, '', rec.trace)
+    rec.trace('transcript-complete-emitted', { confirmedLength: text.length })
     emit(completes, () => ({ text }))
     if (rec.idle) { generation++; detachNetwork(); change('IDLE') }
     else { emptyRestarts = 0; startCommands(false) }
@@ -162,8 +170,9 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
       // A protocol fault must not turn previously displayed confirmed text into interim text.
       let text = update.confirmedText
       try { text = textOf(rec).confirmedText } catch { /* Retain the last valid snapshot. */ }
+      rec.trace('recording-failed', { code: error.code, queuedBytes: rec.queuedBytes })
       rec.done = true; recording = undefined; release(rec)
-      publish(text); emit(completes, () => ({ text }))
+      publish(text, '', rec.trace); rec.trace('transcript-complete-emitted', { confirmedLength: text.length }); emit(completes, () => ({ text }))
     }
     change('IDLE')
     request?.reject(error)
@@ -177,35 +186,55 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
   }
   function startCommands(retry: boolean): void {
     const token = generation
+    const trace = m1Diagnostic('listening')
+    trace('command-listening-requested', { retry })
+    let interimCount = 0
     let engine: CommandRecognition
-    try { engine = commandRecognition() } catch (error: unknown) { fail(mapError(error)); return }
+    try { engine = commandRecognition() } catch (error: unknown) { trace('command-listening-unavailable'); fail(mapError(error)); return }
     recognition = engine
     let hadResult = false, started = false
     const consumed = new Map<number, string>()
     const timeout = later(() => {
-      if (recognition === engine && generation === token) fail(speechError('RECOGNITION_FAILED', '语音监听启动超时。'))
+      if (recognition === engine && generation === token) {
+        trace('command-listening-timeout')
+        fail(speechError('RECOGNITION_FAILED', '语音监听启动超时。'))
+      }
     }, 10_000)
     const live = () => recognition === engine && generation === token
     engine.onstart = () => {
       if (!live()) { try { engine.abort() } catch { /* Stale native startup. */ } return }
       cancel(timeout); started = true
+      trace('command-listening-started')
       const request = pending; pending = undefined
       change('LISTENING'); request?.resolve()
     }
     engine.onresult = event => {
-      if (!live() || !started || state !== 'LISTENING') return
+      if (!live() || !started || state !== 'LISTENING') {
+        trace('command-result-ignored', { reason: !live() ? 'stale-engine' : !started ? 'not-started' : 'not-listening' })
+        return
+      }
       for (let index = event.resultIndex; index < event.results.length; index++) {
         const result = event.results[index]
-        if (!result?.isFinal || consumed.has(index)) continue
+        if (!result) continue
+        if (!result.isFinal) {
+          if (++interimCount === 1 || interimCount % 10 === 0) trace('command-result-interim', { index, textLength: result[0].transcript.length, count: interimCount })
+          continue
+        }
+        if (consumed.has(index)) { trace('command-result-ignored', { index, reason: 'duplicate-final' }); continue }
         const text = result[0].transcript
         consumed.set(index, text)
         if (text.trim()) { hadResult = true; emptyRestarts = 0 }
         const command = commandOf(text)
-        if (command) emit(commands, () => command)
+        trace('command-result-final', { index, textLength: text.length, matched: Boolean(command), command })
+        if (command) {
+          trace('command-event-emitted', { command })
+          emit(commands, () => command)
+        }
       }
     }
     engine.onerror = event => {
       if (!live()) return
+      trace('command-listening-error', { reason: ['no-speech', 'network', 'not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported', 'aborted'].includes(event.error) ? event.error : 'other' })
       // no-speech is a natural, empty recognition end, not a network retry.
       if (event.error === 'no-speech') return
       const code = event.error === 'not-allowed' || event.error === 'service-not-allowed' ? 'PERMISSION_DENIED'
@@ -215,6 +244,7 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     }
     engine.onend = () => {
       if (!live()) return
+      trace('command-listening-ended', { started, hadResult, interimCount })
       detachCommands(); cancel(timeout)
       if (!started) return fail(speechError('RECOGNITION_FAILED', '语音监听未能启动。'))
       restart(() => { if (generation === token && state === 'LISTENING') startCommands(true) }, retry, hadResult)
@@ -223,13 +253,15 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
   }
 
   function live(rec: Recording): boolean { return recording === rec && !rec.done }
-  function refresh(rec: Recording): void {
+  function refresh(rec: Recording, sessionId: number): void {
     if (!live(rec)) return
     const raw = rec.sessions.map(session => session.text.snapshot().confirmedText).join('')
     const body = recordingText(raw, rec.sessions.every(session => session.ended))
     // Never search interim text, or a later session beyond an earlier unconfirmed result.
     const snapshot = textOf(rec)
+    rec.trace('transcript-parsed', { sessionId, confirmedLength: snapshot.confirmedText.length, interimLength: snapshot.interimText.length })
     if (body.stop && !snapshot.interimText && !rec.stopCommand && !rec.stopping) {
+      rec.trace('recording-stopped', { reason: 'stop-command', queuedBytes: rec.queuedBytes, capturedFrames: rec.captured, sentFrames: rec.sent })
       rec.stopCommand = true; rec.cutoff = body.text.length
       publish(body.text)
       emit(commands, () => 'STOP_INPUT' as const)
@@ -246,6 +278,7 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     if (session.ended || session.draining) return
     if (!session.used || !session.ready) { session.ended = true; closeSession(session); return }
     session.draining = true
+    rec.trace('audio-end-sent', { sessionId: session.id, queuedBytes: rec.queuedBytes })
     try { session.socket.send(JSON.stringify({ data: { status: 2 } })) }
     catch { fail(speechError('RECOGNITION_FAILED', '无法结束语音会话。')); return }
     later(() => { if (live(rec) && !session.ended) fail(speechError('RECOGNITION_FAILED', '语音会话收尾超时。')) }, 5000, session.timers)
@@ -257,7 +290,7 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
   }
   function scheduleRotation(rec: Recording, session: Session): void {
     cancel(rec.prepare); cancel(rec.cut)
-    const elapsed = Date.now() - session.opened
+    const elapsed = performance.now() - session.opened
     rec.prepare = later(() => {
       if (live(rec) && !rec.stopping && !rec.stopCommand && rec.active === session) {
         rec.prepared = connect(rec, false)
@@ -276,15 +309,17 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     try { socket = proxySocket(options.proxyPath ?? '/api/m1/iat') }
     catch { fail(speechError('RECOGNITION_FAILED', '无法建立安全语音代理连接。')); return }
     const session: Session = {
-      socket, text: new IatText(), ready: false, first: true, ended: false, draining: false,
-      used: false, opened: Date.now(), timers: new Set(),
+      id: rec.sessions.length + 1, trace: rec.trace, socket, text: new IatText(), ready: false, first: true, ended: false, finalReceived: false, draining: false,
+      used: false, opened: performance.now(), timers: new Set(),
     }
+    rec.trace('websocket-connecting', { sessionId: session.id })
     if (active) { rec.sessions.push(session); rec.active = session }
     const valid = () => live(rec) && !session.ended
     const timeout = later(() => { if (valid()) fail(speechError('RECOGNITION_FAILED', '语音连接启动超时。')) }, 10_000, session.timers)
     socket.onopen = () => {
       if (!valid()) return
       cancel(timeout); session.ready = true
+      rec.trace('websocket-opened', { sessionId: session.id, readyState: socket.readyState })
       if (rec.active === session && rec.startAudio) {
         const start = rec.startAudio; rec.startAudio = undefined; start()
       }
@@ -292,11 +327,13 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     }
     socket.onmessage = event => {
       if (!valid()) return
+      const receivedAtMs = performance.now()
       try {
         const message = decodeIat(event.data as unknown)
+        rec.trace('websocket-message', { receivedAtMs, sessionId: session.id, code: 0, status: message.status, ended: message.ended, sn: message.result?.sn, resultType: message.result?.replacement ? 'rpl' : message.result?.dynamic ? 'apd' : 'append' })
         const changed = session.text.accept(message)
-        if (message.ended) session.ended = true
-        if (changed) refresh(rec)
+        if (message.ended) { session.ended = true; session.finalReceived = true }
+        if (changed) refresh(rec, session.id)
         if (!live(rec)) return
         if (message.ended) {
           closeSession(session)
@@ -310,17 +347,23 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
           // A retiring rotation session must still deliver its tail before completion.
           if (rec.stopping) maybeFinish(rec)
         }
-      } catch { fail(speechError('RECOGNITION_FAILED', '语音服务返回了无效或不完整的识别结果。')) }
+      } catch {
+        rec.trace('websocket-message-rejected', { receivedAtMs, sessionId: session.id })
+        fail(speechError('RECOGNITION_FAILED', '语音服务返回了无效或不完整的识别结果。'))
+      }
     }
     socket.onerror = () => { if (valid()) fail(speechError('RECOGNITION_FAILED', '语音连接中断。')) }
-    socket.onclose = () => { if (valid()) fail(speechError('RECOGNITION_FAILED', '语音连接在最终结果返回前关闭。')) }
+    socket.onclose = event => {
+      rec.trace('websocket-closed', { sessionId: session.id, code: event?.code, clean: event?.wasClean, finalReceived: session.finalReceived })
+      if (valid()) fail(speechError('RECOGNITION_FAILED', '语音连接在最终结果返回前关闭。'))
+    }
     return session
   }
   function pump(rec: Recording): void {
     if (!live(rec) || rec.pump !== undefined) return
     const session = rec.active
     if (!session?.ready || session.ended) { maybeFinish(rec); return }
-    if (Date.now() - session.opened >= 58_000) return fail(speechError('RECOGNITION_FAILED', '语音会话超过安全发送时限。'))
+    if (performance.now() - session.opened >= 58_000) return fail(speechError('RECOGNITION_FAILED', '语音会话超过安全发送时限。'))
     const frame = rec.queue.shift()
     if (!frame) { maybeFinish(rec); return }
     rec.queuedBytes -= frame.byteLength
@@ -328,11 +371,12 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     try {
       session.socket.send(audioFrame(frame, session.first))
       session.first = false; session.used = true
+      if (++rec.sent === 1 || rec.sent % 25 === 0) rec.trace('audio-frame-sent', { sessionId: session.id, sequence: rec.sent, bytes: frame.length, durationMs: frame.length / 32, queuedBytes: rec.queuedBytes, readyState: session.socket.readyState, bufferedBytes: session.socket.bufferedAmount })
     } catch { fail(speechError('RECOGNITION_FAILED', '语音音频发送失败。')); return }
     // Preserve the original deadline across stalls. Clamping the deadline to "now"
     // forgets missed time and permanently adds each stall to the audio queue.
     // Limit each catch-up step to 10ms; a new physical socket gets its own cadence.
-    const now = Date.now()
+    const now = performance.now()
     const duration = frame.length / 32
     session.sendAt = (session.sendAt ?? now) + duration
     rec.pump = later(() => { rec.pump = undefined; pump(rec) }, Math.max(0, duration - 10, session.sendAt - now))
@@ -341,6 +385,7 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     rec.idle ||= idle
     if (rec.stopping) return
     rec.stopping = true
+    rec.trace('recording-stopped', { reason: rec.active?.finalReceived ? 'service-final' : idle ? 'stop-listening' : 'stop-recording', queuedBytes: rec.queuedBytes, capturedFrames: rec.captured, sentFrames: rec.sent })
     cancel(rec.prepare); cancel(rec.cut)
     if (rec.prepared) { closeSession(rec.prepared); rec.prepared = undefined }
     // stop() flushes complete PCM samples; the abort then prevents a late permission grant.
@@ -383,21 +428,25 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
       if (state !== 'LISTENING' || recording) return
       generation++; detachCommands(); cancelAll(); emptyRestarts = 0
       const rec: Recording = {
+        trace: m1Diagnostic(), captured: 0, sent: 0,
         abort: new AbortController(), sessions: [], queue: [], queuedBytes: 0,
         stopping: false, idle: false, done: false, stopCommand: false,
       }
+      rec.trace('recording-requested')
       recording = rec; change('RECORDING'); publish('')
       const timeout = later(() => { if (live(rec) && !rec.audio) fail(speechError('RECOGNITION_FAILED', '音频采集启动超时。')) }, 10_000)
       void captureAudio(rec.abort.signal, frame => {
         if (!live(rec) || rec.stopCommand || (rec.stopping && rec.active?.ended)) return
+        if (++rec.captured === 1 || rec.captured % 25 === 0) rec.trace('audio-frame-captured', { sequence: rec.captured, bytes: frame.length, durationMs: frame.length / 32, queuedBytes: rec.queuedBytes })
         rec.queue.push(frame); rec.queuedBytes += frame.length
         if (rec.queuedBytes > 96_000) return fail(speechError('RECOGNITION_FAILED', '音频缓冲已满，已停止录入。'))
         pump(rec)
       }, () => { if (live(rec)) fail(speechError('MICROPHONE_UNAVAILABLE', '音频采集中断。')) }, start => {
         if (!live(rec) || rec.stopping) return
         rec.startAudio = start
+        rec.trace('audio-prepared')
         connect(rec, true)
-      })
+      }, rec.trace)
         .then(audio => {
           cancel(timeout)
           if (!live(rec) || rec.stopping) { audio.stop(); return }

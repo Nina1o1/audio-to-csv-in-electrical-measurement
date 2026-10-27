@@ -30,6 +30,7 @@ function object(value: unknown): Record<string, unknown> {
 }
 
 export interface IatResult {
+  status: 0 | 1 | 2
   ended: boolean
   result?: { sn: number; text: string; replacement?: readonly [number, number]; dynamic: boolean }
 }
@@ -41,7 +42,7 @@ export function decodeIat(raw: unknown): IatResult {
   if (root.code !== 0) throw new Error('Speech service rejected the session.')
   const data = object(root.data)
   if (data.status !== 0 && data.status !== 1 && data.status !== 2) throw new Error('Invalid speech status.')
-  if (data.result === undefined) return { ended: data.status === 2 }
+  if (data.result === undefined) return { status: data.status, ended: data.status === 2 }
   const result = object(data.result)
   if (!Number.isSafeInteger(result.sn) || Number(result.sn) < 0 || !Array.isArray(result.ws)) {
     throw new Error('Invalid speech result.')
@@ -62,7 +63,7 @@ export function decodeIat(raw: unknown): IatResult {
     replacement = [Number(range[0]), Number(range[1])]
   } else if (result.pgs !== undefined && result.pgs !== 'apd') throw new Error('Invalid replacement mode.')
   return {
-    ended: data.status === 2,
+    status: data.status, ended: data.status === 2,
     result: { sn: Number(result.sn), text, replacement, dynamic: result.pgs !== undefined },
   }
 }

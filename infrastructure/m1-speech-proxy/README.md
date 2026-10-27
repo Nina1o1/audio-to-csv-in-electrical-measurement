@@ -20,7 +20,7 @@ Checkpoint B 的主 App 已提供独立语音访问入口。直接连代理而�
 不会退回前端密钥或匿名连接。不要通过跨域CORS开放来绕过认证。
 
 本地运行完整 App：在该目录准备未提交的 `.dev.vars`，从仓库根目录运行 `npm run dev:voice`，
-打开 `https://localhost:8787/`，在页面内登录。若端口占用，可停止旧代理或使用
+打开 `https://localhost:5173/`，在页面内登录。若端口占用，先停止旧 Vite／代理或使用
 `npm run dev:voice -- --port 8788`。此命令沿用现有本地验收运行器，让 App 与代理同源；
 Vite 的 `http://localhost:5173` 本身没有 `/api/m1/*` 服务，不能单独用于真实录入。
 
