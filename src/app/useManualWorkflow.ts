@@ -670,7 +670,7 @@ export function useManualWorkflow(options: {
 
   return {
     microphone, starting, processing, stopping, confirmedText, interimText, textComplete, speechError,
-    authenticating, authMessage, loginVoice, logoutVoice, toggleListening, stopInput,
+    authenticating, authMessage, loginVoice, logoutVoice, toggleListening, startInput, stopInput, inputActive,
     draft, draftState, rows, selectedIds, allSelected, partiallySelected, select, selectAll, canExport, exportRecords,
     historyStatus, historyError, displayError, message, errors,
     pending, awaitingCheck, busy, filters, editable, canSave, renderError, historyRenderError, reportRenderError, retryRender,

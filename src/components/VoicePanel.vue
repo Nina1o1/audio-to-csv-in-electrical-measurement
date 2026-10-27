@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { MicrophoneState } from '../shared/data-models'
-defineProps<{ microphone: MicrophoneState; starting: boolean; processing: boolean; stopping: boolean; confirmedText: string; speechError: string; textComplete: boolean; authenticating: boolean; authMessage: string }>()
-const emit = defineEmits<{ listen: []; login: [password: string]; logout: [] }>()
+defineProps<{ microphone: MicrophoneState; starting: boolean; processing: boolean; stopping: boolean; confirmedText: string; speechError: string; textComplete: boolean; authenticating: boolean; authMessage: string; canStartInput: boolean; canStopInput: boolean }>()
+const emit = defineEmits<{ listen: []; start: []; stop: []; login: [password: string]; logout: [] }>()
 const password = ref('')
 function passwordInput(event: Event): void {
   if (event.target instanceof HTMLInputElement) password.value = event.target.value
@@ -19,7 +19,7 @@ function login(): void {
     <div class="keywords-content">
       <div class="actions">
         <button type="button" :disabled="authenticating || microphone === 'RECORDING'" aria-describedby="voice-note" @click="emit('listen')">{{ starting ? '取消启动' : microphone === 'IDLE' ? '开始监听' : '停止监听' }}</button>
-        <span v-if="microphone !== 'RECORDING'" class="status" :class="{ 'status-idle': microphone === 'IDLE' }" role="status">{{ microphone === 'LISTENING' ? '监听中' : '未在监听' }}</span>
+        <span class="status" :class="{ 'status-idle': microphone === 'IDLE' }" role="status">{{ microphone === 'IDLE' ? '未在监听' : '监听中' }}</span>
       </div>
       <dl class="keywords">
         <div><dt>录入</dt><dd><strong>开始输入</strong> 开始记录语音 <span>／</span> <strong>结束输入</strong> 结束记录语音</dd></div>
@@ -48,6 +48,10 @@ function login(): void {
     </div>
     <div class="panel-footer">
       <p id="voice-note" class="muted">{{ microphone }} · {{ stopping ? '正在结束录入，请稍候' : '说“开始输入”后等待录入就绪再讲话；停顿后自动完成本段，也可说“结束输入”。' }} 录入中不可切换监听；仅最终确认文本用于更新草稿。</p>
+    </div>
+    <div class="actions voice-input-actions">
+      <button type="button" :disabled="!canStartInput" aria-describedby="voice-note" @click="emit('start')">开始输入</button>
+      <button type="button" :disabled="!canStopInput" aria-describedby="voice-note" @click="emit('stop')">结束输入</button>
     </div>
     <details>
       <summary>语音代理访问</summary>

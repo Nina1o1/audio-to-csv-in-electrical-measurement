@@ -32,6 +32,8 @@ button.danger:disabled { color: #945347; border-color: #c7aaa3; background: #fff
 .panel { padding: 10px 18px; margin-bottom: 10px; }
 .keywords-panel { background: #f0f0f0; }
 .voice-panel { background: #f0f0f0; }
+.voice-input-actions button:not(:disabled) { background: #fff; }
+.voice-input-actions button:disabled { background: #f0f0f0; }
 .draft-panel { background: #fbeaea; }
 .history-panel { background: #f0f0f0; padding: 18px; }
 .confirmation-panel { background: #f0f0f0; }
@@ -107,6 +109,7 @@ button.danger:not(:disabled) { color: #945347; }
 .feedback:empty { display: none; }
 .feedback { margin: 8px 0; overflow-wrap: anywhere; }
 dialog { width: min(740px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: auto; border: 1px solid #a7b8af; padding: 20px; color: inherit; background: #fafbf9; }
+dialog.draft-confirmation { width: min(520px, calc(100vw - 24px)); }
 dialog::backdrop { background: rgb(20 40 30 / 35%); }
 dialog h2, dialog p { margin-bottom: 10px; }
 .dialog-actions { justify-content: flex-end; margin-top: 14px; }
