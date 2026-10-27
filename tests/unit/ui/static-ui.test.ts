@@ -42,7 +42,8 @@ describe('UI layout regression', () => {
     expect(html).toMatch(/id="draft-work-order"[^>]*>/)
     expect(html.match(/<input id="draft-work-order"[^>]*>/)?.[0]).not.toContain('disabled')
     expect(html).toContain('已确认文本')
-    expect(html).toContain('临时文本')
+    expect(html).not.toContain('临时文本')
+    expect(html.replace(/<[^>]*>/g, '')).toContain('请先点击“开始监听”')
     expect(html.match(/<button[^>]*>保存<\/button>/)?.[0]).toContain('disabled')
   })
 

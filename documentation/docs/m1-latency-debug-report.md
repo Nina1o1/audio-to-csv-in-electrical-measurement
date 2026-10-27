@@ -216,3 +216,15 @@ Chrome现打开https://localhost:5173/?m1Debug=1，顶部可复制最多500条M1
 
 
 原5173复测结果：用户随后确认页面显示RECORDING。本轮在原来源的完整App中成功从LISTENING进入RECORDING，证明该轮START_INPUT至App录入路由能够执行。未取得该轮完整时间点，不能据此量化原页面延迟，也不能把旧构建或任何未验证因素归因为此前偶发失败；“一直LISTENING无响应”本轮未复现。诊断面板保留供下一次失败时复制原页日志。
+
+## 2026-10-28 真机跟进：说“开始输入”后连接失败
+
+本轮只读取浏览器状态与代理代码，未改识别逻辑，未调用讯飞或读取凭据。
+
+- 当前页面：`https://localhost:5173/`；本机workerd正在5173端口监听。
+- Chrome现存控制台记录中，4次`wss://localhost:5173/api/m1/iat`失败均提示：`HTTP Authentication failed; no valid credentials available`。
+- 这是浏览器可观察到的HTTP鉴权失败；当前Worker的IAT入口在`validSession`未通过时返回401，且发生在上游讯飞握手之前。缺失、过期、被更换SESSION_SECRET失效的Cookie均可能触发，单凭控制台不能进一步区分。
+- LISTENING使用浏览器Web Speech，不依赖代理Cookie；因此能够识别“开始输入”与正文代理鉴权失败并不矛盾。
+- 现有M1的WebSocket.onerror统一报告“语音连接中断”，掩盖了本次失败发生在建连阶段的细节。本次不根据该通用提示修改音频缓冲或停止逻辑。
+- 恢复步骤：在**当前HTTPS localhost:5173页面**展开“语音代理访问”，输入已有共享访问口令并点击“登录语音代理”；确认显示登录成功，再开始监听并说“开始输入”。访问口令不是讯飞APIKey/APISecret。若登录后仍失败，须继续检查该次login响应和随后的WebSocket握手，不能认定所有鉴权问题均已解决。
+- 本轮未代填口令、未验证重新登录后的录入成功；用户恢复登录后仍需实际复测。

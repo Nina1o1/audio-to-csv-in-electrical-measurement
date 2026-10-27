@@ -3,7 +3,7 @@ if (import.meta.env.MODE === 'm1-debug' && new URLSearchParams(location.search).
   const entries: Record<string, unknown>[] = []
   const panel = document.createElement('aside')
   panel.setAttribute('aria-label', 'M1 开发诊断')
-  panel.style.cssText = 'padding:8px 16px;background:#fff4cf;color:#222;font:14px system-ui;position:relative;z-index:1'
+  panel.style.cssText = 'padding:8px 16px;background:#fff4cf;color:#222;font-family:system-ui;font-size:var(--font-size-md);position:relative;z-index:1'
   const label = document.createElement('strong')
   label.textContent = 'M1 开发诊断 · 仅记录事件元数据'
   const status = document.createElement('span')
@@ -21,7 +21,7 @@ if (import.meta.env.MODE === 'm1-debug' && new URLSearchParams(location.search).
   const summary = document.createElement('summary')
   summary.textContent = '查看诊断日志'
   const output = document.createElement('pre')
-  output.style.cssText = 'max-height:220px;overflow:auto;white-space:pre-wrap;font-size:12px'
+  output.style.cssText = 'max-height:220px;overflow:auto;white-space:pre-wrap;font-size:var(--font-size-sm)'
   details.append(summary, output)
   panel.append(label, status, copy, details)
   document.body.prepend(panel)
