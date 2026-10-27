@@ -4,7 +4,7 @@
 
 复用现有 M1–M5，在 App 协调层完成最终片段 → M2.parse → M3.applyParseResult；M3.getDraft 和既有订阅提供草稿快照。M1–M5 的 Public Interface、Data Models、标准单位、持久化格式均未改变。
 
-- 实时快照不解析，不累计转写历史；空白片段及空解析不调用草稿更新。
+- 实时快照只更新 UI，不解析、不累计转写历史；当前有效录入的最终片段（含空白文本）原对象传给 M2，ParseResult（含 `{}`）原对象传给 M3，由模块决定空输入及空更新行为。
 - M1 保证每段完成一次、识别去重及旧物理连接隔离；App 仅消费当前录入上下文一次，保存成功、确认删除、退出语音及卸载后失效。不根据相同文本去重不同录入。
 - M1 通知期间不嵌套业务变更，App 在微任务中检查当前上下文并路由命令／合并字段。STOP_INPUT 不负责解析，完成事件是唯一解析入口。
 - M2、M3、M4 均同步；真实异步风险来自 M1 启动／收尾、微任务及代理登录。无额外任务队列或状态框架。
@@ -14,11 +14,30 @@
 ## 自动化范围
 
 - `voice-workflow.test.ts`：可控 Mock M1，真实 M2/M3/M4（通过 spy 检查调用）；覆盖稀疏合并、连续修正、空输入、重复完成、停止顺序、保存／删除命令、混合编辑、错误、收尾、上下文失效、启动取消和认证。
-- `voice-m1.test.ts`：真实 M1 → App → M2 → M3，替换浏览器命令引擎、音频和 WebSocket；覆盖自然完成、STOP_INPUT、识别中断，检查通知重入和资源清理。
-- `manual-app.test.ts`：实际 Vue 组件事件、文本／草稿渲染、语音确认保存、代理登录／退出、密码清空和卸载。
+- `voice-m1.test.ts`：真实 M1 → App → M2 → M3 → App → M4，替换浏览器命令引擎、音频、WebSocket 和存储适配；覆盖自然完成、STOP_INPUT、识别中断、离线，检查共享类型、精确数据结构、原对象传递、通知重入、保存时序和资源清理。冻结 M1/M2 输出及 M3 保存返回值，防止调用方修改数据；在 setItem 内和 M4 返回前检查草稿仍完整，completeSave 尚未调用。
+- `voice-data-flow.test.ts`：16 项真实 M1–M4 连续数据流测试，包含完整示例、指定三段累积、语音修正、手动数值 18 保留、保存后全新实例重载、单位换算、空／无关／部分有效文本、实时重复、重复停止、中断丢弃 interim、12 次快速录入、校验失败、写失败重试、删除后迟到回调、卸载清理。
+- `manual-app.test.ts`：实际 Vue 组件事件、文本／草稿渲染、语音确认保存及历史表重挂载、手动数值 18 与后续语音混合、代理登录／退出、密码清空和卸载。
 - 原有手动、M1–M5、Mock 设施及布局回归保留。旧“监听按钮必须禁用”的占位断言按接入后的行为更新，未删除测试以隐藏失败。
 
-2026-10-27 自动化结果：`npm run type-check` 通过；`npm run test -- --run` 为 20 个文件、1236 通过、0 失败、2 todo；`npm run build` 通过。现有两个 todo 为 M2 词表／相邻字段边界的历史待定项，不属于本次失败或新增支持。
+2026-10-27 连续数据流验证结果：`npm run type-check`、`npm run test -- --run`、`npm run build` 全部通过；21 个测试文件、1261 通过、0 失败、2 todo（未执行）。原有两个 todo 为 M2 词表／相邻字段边界的历史待定项。详细边界、场景、替身范围和本轮变更见 [数据流测试报告](checkpoint-b-data-flow-report.md)。
+
+## 严格 Data Contract 补充
+
+以 Public Interface 和共享 Data Models 为准：TranscriptSegment 只有 text，不添加 id/createdAt；M4 正式保存接口使用 save(InspectionRecord)，不改成 add。
+
+| 数据边界 | 共享类型 | 修复后结果 | 实现与测试 |
+|---|---|---|---|
+| M1 → App | TranscriptSegment | PASS | M1 正常／中断完成均输出仅含 text 的最终片段，真实模块集成断言其结构。 |
+| App → M2 | TranscriptSegment | PASS | 不跳过空白最终片段、不重建对象；集成断言引用一致，冻结输入验证无修改。 |
+| M2 → App | ParseResult | PASS | 稀疏标准数值结果，不输出单位或 null；集成断言精确结果与静态共享类型。 |
+| App → M3 | ParseResult | PASS | 包含空结果在内均交给 applyParseResult；集成断言引用一致。 |
+| M3 草稿状态 | DraftFields | PASS | 唯一草稿归 M3；集成覆盖未更新字段保留、空更新不使失败 pending 失效。 |
+| M3 → App（保存） | InspectionRecord | PASS | 校验确认后生成九字段记录；集成检查身份、时间和冻结返回对象。 |
+| App → M4 | InspectionRecord | PASS | save 接收 confirmSave 返回原对象；写入内容一致，M4 返回后才 completeSave。 |
+
+M1 错误映射另改用严格字符串枚举守卫，移除错误码 as 断言及 String 强制转换；回归覆盖四种合法错误码和可伪装成合法字符串的对象。
+
+自动化使用浏览器／音频／存储替身，不替代下述真实麦克风验收。
 
 ## 真实麦克风清单（尚待人工执行）
 

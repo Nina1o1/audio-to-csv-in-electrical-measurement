@@ -67,6 +67,27 @@ beforeEach(() => {
 afterEach(() => { module.stopListening(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('M1 public lifecycle', () => {
+  it.each(['NOT_SUPPORTED', 'PERMISSION_DENIED', 'MICROPHONE_UNAVAILABLE', 'RECOGNITION_FAILED'] as const)(
+    'preserves the validated string error code %s from audio startup', async code => {
+      const errors = vi.fn()
+      module.onError(errors)
+      vi.mocked(captureAudio).mockRejectedValueOnce({ code, message: 'audio startup failed' })
+      await listen(); module.startRecording()
+      await Promise.resolve(); await Promise.resolve()
+      expect(errors).toHaveBeenCalledExactlyOnceWith({ code, message: 'audio startup failed' })
+      expect(module.getState()).toBe('IDLE')
+    },
+  )
+  it('does not coerce an object into a public speech error code', async () => {
+    const errors = vi.fn(), coerce = vi.fn(() => 'PERMISSION_DENIED')
+    module.onError(errors)
+    vi.mocked(captureAudio).mockRejectedValueOnce({ code: { toString: coerce }, message: 'invalid code' })
+    await listen(); module.startRecording()
+    await Promise.resolve(); await Promise.resolve()
+    expect(coerce).not.toHaveBeenCalled()
+    expect(errors).toHaveBeenCalledExactlyOnceWith({ code: 'RECOGNITION_FAILED', message: expect.any(String) })
+    expect(module.getState()).toBe('IDLE')
+  })
   it('exposes exactly the documented module methods', () => {
     expect(Object.keys(module).sort()).toEqual(['startListening', 'stopListening', 'startRecording', 'stopRecording', 'getState', 'onStateChange', 'onCommand', 'onTranscriptUpdate', 'onTranscriptComplete', 'onError'].sort())
     expect(module.getState()).toBe('IDLE')

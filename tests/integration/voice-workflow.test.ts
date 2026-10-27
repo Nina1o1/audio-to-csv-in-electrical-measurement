@@ -53,15 +53,18 @@ describe('Checkpoint B: App voice coordination', () => {
     await begin(); await finish('接触电阻改成15毫欧')
     expect(ui.draft).toMatchObject({ partNumber: 'MANUAL', contactResistance: 15, insulationResistance: 500 })
   })
-  it.each(['', ' \n '])('ignores blank final text %j without parsing or updating', async text => {
+  it.each(['', ' \n '])('routes blank final text %j through M2 and M3 without changing the draft', async text => {
     const { ui, parse, apply, listen, begin, finish } = setup()
     ui.updateField('workOrder', 'KEEP'); await listen(); await begin(); await finish(text)
-    expect(parse).not.toHaveBeenCalled(); expect(apply).not.toHaveBeenCalled(); expect(ui.draft.workOrder).toBe('KEEP')
+    expect(parse).toHaveBeenCalledExactlyOnceWith({ text })
+    expect(apply).toHaveBeenCalledExactlyOnceWith({}); expect(ui.draft.workOrder).toBe('KEEP')
+    expect(apply.mock.calls[0]?.[0]).toBe(parse.mock.results[0]?.value)
   })
   it('keeps the draft when no valid fields are recognized', async () => {
     const { ui, parse, apply, listen, begin, finish } = setup()
     ui.updateField('workOrder', 'KEEP'); await listen(); await begin(); await finish('今天检查完成')
-    expect(parse).toHaveBeenCalledOnce(); expect(apply).not.toHaveBeenCalled(); expect(ui.draft.workOrder).toBe('KEEP')
+    expect(parse).toHaveBeenCalledOnce(); expect(apply).toHaveBeenCalledExactlyOnceWith({}); expect(ui.draft.workOrder).toBe('KEEP')
+    expect(apply.mock.calls[0]?.[0]).toBe(parse.mock.results[0]?.value)
   })
   it('consumes a completion once in the active context, without deduplicating equal text in later recordings', async () => {
     const { speech, parse, apply, listen, begin, finish } = setup()
@@ -101,6 +104,21 @@ describe('Checkpoint B: App voice coordination', () => {
     expect(ui.draft).toEqual(full); expect(ui.draftState).toBe('IDLE'); expect(records.getAll()).toEqual([])
     await command('SAVE'); await command('CONFIRM_SAVE')
     expect(records.getAll()).toEqual([pending])
+  })
+  it.each(['', ' \n ', '今天检查完成'])('routes the no-op transcript %j without invalidating a failed pending record', async text => {
+    const { ui, storage, records, parse, apply, listen, begin, finish, command } = setup()
+    await listen(); await begin(); await finish(fullText)
+    storage.setItem.mockImplementationOnce(() => { throw new Error('quota') })
+    await command('SAVE'); await command('CONFIRM_SAVE')
+    const pending = { ...ui.pending }
+    parse.mockClear(); apply.mockClear()
+    await begin(); await finish(text)
+    expect(parse).toHaveBeenCalledExactlyOnceWith({ text })
+    expect(apply).toHaveBeenCalledExactlyOnceWith({})
+    expect(apply.mock.calls[0]?.[0]).toBe(parse.mock.results[0]?.value)
+    expect(ui.draft).toStrictEqual(full)
+    await command('SAVE'); await command('CONFIRM_SAVE')
+    expect(records.getAll()).toStrictEqual([pending])
   })
   it('routes DELETE / KEEP / CONFIRM_DELETE only to the draft and clears text only on confirmation', async () => {
     const { ui, storage, listen, begin, finish, command } = setup()

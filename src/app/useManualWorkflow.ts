@@ -195,10 +195,8 @@ export function useManualWorkflow(options: {
             return
           }
           confirmedText.value = segment.text; interimText.value = ''; textComplete.value = true
-          if (segment.text.trim()) {
-            const result = parser.parse(segment)
-            if (Object.keys(result).length) manager.applyParseResult(result)
-          }
+          const result = parser.parse(segment)
+          manager.applyParseResult(result)
           errors.value = []
           accepted = true
         } catch (error: unknown) {

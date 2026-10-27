@@ -22,10 +22,16 @@ type Recording = {
 }
 
 function speechError(code: SpeechErrorCode, message: string): SpeechError { return { code, message } }
+function isSpeechErrorCode(code: unknown): code is SpeechErrorCode {
+  return code === 'NOT_SUPPORTED' || code === 'PERMISSION_DENIED'
+    || code === 'MICROPHONE_UNAVAILABLE' || code === 'RECOGNITION_FAILED'
+}
 function mapError(error: unknown, fallback = '语音识别失败。'): SpeechError {
-  if (typeof error === 'object' && error !== null && 'code' in error
-    && ['NOT_SUPPORTED', 'PERMISSION_DENIED', 'MICROPHONE_UNAVAILABLE', 'RECOGNITION_FAILED'].includes(String(error.code))) {
-    return { code: error.code as SpeechErrorCode, message: 'message' in error && typeof error.message === 'string' ? error.message : fallback }
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const code = error.code
+    if (isSpeechErrorCode(code)) {
+      return { code, message: 'message' in error && typeof error.message === 'string' ? error.message : fallback }
+    }
   }
   const name = typeof error === 'object' && error !== null && 'name' in error ? error.name : ''
   if (name === 'NotAllowedError' || name === 'SecurityError') return speechError('PERMISSION_DENIED', '麦克风权限被拒绝。')
