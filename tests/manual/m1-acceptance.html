@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>M1 独立真机验收</title>
+    <style>
+      body { max-width: 960px; margin: 24px auto; padding: 0 16px; font: 16px/1.6 system-ui; }
+      button, input { font: inherit; margin: 4px; }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f0f0f0; padding: 12px; }
+      section { margin: 24px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>M1 独立真机验收</h1>
+    <p>仅供开发验收，正常生产构建不包含此入口。仅调用真实 M1，不调用 M2–M5、不写入 localStorage。页面加载不启动麦克风，也不调用讯飞。</p>
+    <p>必须通过 HTTPS 与已部署代理同源访问。录入会产生真实讯飞调用；先配置小额测试额度。</p>
+    <p>首次录入可能出现权限或 AudioContext 冷启动延迟；先做一次按钮录入验证，再测试语音启动。</p>
+    <p>当前规则：说完后保持安静，讯飞返回本段最终结果时自动结束录入，静默设置仍为 2 秒。不必说“结束输入”；等待回到 LISTENING 后再开始下一段。</p>
+    <p id="environment"></p>
+    <section aria-label="语音访问控制">
+      <label for="password">语音访问口令（不是讯飞密钥）</label>
+      <input id="password" type="password" autocomplete="off" />
+      <button id="login" type="button">登录语音代理</button>
+      <button id="logout" type="button">退出语音代理</button>
+      <p id="auth" role="status">尚未测试代理登录</p>
+    </section>
+    <section aria-label="M1 独立控制">
+      <button id="listen" type="button">开始监听（startListening）</button>
+      <button id="close" type="button">停止监听 / 取消启动（stopListening）</button>
+      <button id="record" type="button">开始录入（startRecording）</button>
+      <button id="stop" type="button">结束录入（stopRecording）</button>
+      <button id="recreate" type="button">释放并新建实例</button>
+      <button id="dispose" type="button">释放实例与订阅</button>
+      <label><input id="route" type="checkbox" checked />测试驱动自动响应 START_INPUT / STOP_INPUT</label>
+      <p>其余六条业务命令仅记录事件，绝不执行保存、删除或修改。</p>
+      <p id="state" role="status">IDLE</p>
+      <p>讯飞连接：<output id="transport">尚未建立；开始录入后等待此处显示连接已就绪再讲话</output></p>
+      <p>最近语音命令：<output id="command">暂无</output></p>
+      <p>最近错误：<output id="error" role="alert">暂无</output></p>
+    </section>
+    <section aria-label="本次转写">
+      <h2>已确认</h2><pre id="confirmed"></pre>
+      <h2>临时</h2><pre id="interim"></pre>
+      <h2>完成片段</h2><pre id="complete"></pre>
+    </section>
+    <section aria-label="验收事件">
+      <h2>事件记录（内存中最多 500 条）</h2>
+      <p>记录包括实例编号、序号、时间和原始 M1 payload；不包括口令、Cookie、签名或音频。</p>
+      <button id="copy" type="button">复制验收记录</button>
+      <button id="clear" type="button">清除记录</button>
+      <pre id="events"></pre>
+    </section>
+    <script type="module" src="./m1-acceptance.ts"></script>
+  </body>
+</html>

@@ -50,7 +50,7 @@ public/                    无需构建处理的静态资源
 tests/
   unit/
     shared/                共享逻辑测试预留目录
-    ui/                    Phase 1 布局回归及 Mock 协调测试
+    ui/                    
     m1-speech-recognition/
     m2-text-parser/
     m3-draft-manager/
