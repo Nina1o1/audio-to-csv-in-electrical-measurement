@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onErrorCaptured, onMounted, onUnmounted, reactive } from 'vue'
 import DraftPanel from './components/DraftPanel.vue'
+import VoicePanel from './components/VoicePanel.vue'
 import HistoryPanel from './components/HistoryPanel.vue'
 import ConfirmationPreview from './components/ConfirmationPreview.vue'
 import { useManualWorkflow } from './app/useManualWorkflow'
@@ -25,21 +26,9 @@ onErrorCaptured((error, instance) => {
 
 <template>
   <main class="workspace">
-    <header class="page-header"><h1>工业质检语音录入系统</h1><span class="status">Phase 3 · 手动业务闭环</span></header>
-    <p id="manual-note" class="preview-note" tabindex="-1">当前已接入手动草稿与浏览器本地历史记录，支持新增、查询、编辑、删除和 CSV 导出。草稿刷新后丢失；语音尚未接入。</p>
-    <section class="panel keywords-panel" aria-labelledby="keywords-title">
-      <h2 id="keywords-title">语音关键词提示</h2>
-      <dl class="keywords">
-        <div><dt>录入</dt><dd><strong>开始输入</strong> ／ <strong>结束输入</strong></dd></div>
-        <div><dt>删除</dt><dd><strong>删除</strong> ／ <strong>保留</strong> ／ <strong>确认删除</strong></dd></div>
-        <div><dt>保存</dt><dd><strong>保存</strong> ／ <strong>修改</strong> ／ <strong>确认保存</strong></dd></div>
-      </dl>
-    </section>
-    <section class="panel voice-panel" aria-labelledby="voice-title">
-      <div class="section-heading"><h2 id="voice-title">实时语音转写文本</h2><button disabled aria-describedby="manual-note">开始监听</button></div>
-      <div class="transcript"><p><span>已确认文本</span><span>暂无文本</span></p><p><span>临时文本</span><span>暂无文本</span></p></div>
-      <div class="panel-footer"><span>文本状态：空白 · 语音尚未接入</span><button disabled>结束录入</button></div>
-    </section>
+    <header class="page-header"><h1>工业质检语音录入系统</h1><span class="status">Checkpoint B · 语音与手动录入</span></header>
+    <p id="manual-note" class="preview-note" tabindex="-1">当前已接入手动草稿与浏览器本地历史记录，支持新增、查询、编辑、删除和 CSV 导出。草稿刷新后丢失；语音与手动编辑使用同一份草稿。</p>
+    <VoicePanel :microphone="ui.microphone" :starting="ui.starting" :processing="ui.processing" :stopping="ui.stopping" :confirmed-text="ui.confirmedText" :interim-text="ui.interimText" :text-complete="ui.textComplete" :authenticating="ui.authenticating" :auth-message="ui.authMessage" @listen="ui.toggleListening" @stop="ui.stopInput" @login="ui.loginVoice" @logout="ui.logoutVoice" />
     <template v-if="!ui.renderError">
       <DraftPanel :draft="ui.draft" :disabled="!ui.editable" :save-disabled="!ui.canSave" :status="ui.draftState" @update="ui.updateField" @save="ui.requestSave" @delete="ui.requestDelete" />
       <HistoryPanel v-if="!ui.historyRenderError" v-model:filters="ui.filters" :records="ui.rows" :selected-ids="ui.selectedIds" :status="ui.historyStatus" :writable="ui.historyWritable" :all-selected="ui.allSelected" :partially-selected="ui.partiallySelected" :selection-disabled="!ui.historyWritable" :export-disabled="!ui.canExport" @export="ui.exportRecords" @query="ui.query" @select="ui.select" @select-all="ui.selectAll" @edit="ui.openHistoryEdit" @delete="ui.openHistoryDelete" />
@@ -53,6 +42,7 @@ onErrorCaptured((error, instance) => {
     </section>
     <div class="feedback" aria-live="polite">
       <p>{{ ui.message }}</p>
+      <p v-if="ui.speechError" role="alert">{{ ui.speechError }}</p>
       <p v-if="ui.historyError" role="alert">{{ ui.historyError }}</p>
       <p v-if="ui.displayError" role="alert">{{ ui.displayError }}</p>
       <ul v-if="ui.errors.length" role="alert"><li v-for="error in ui.errors" :key="error.field">{{ fieldLabels[error.field] }}：{{ error.code === 'REQUIRED' ? '必填' : '数值必须有限且非负' }}</li></ul>

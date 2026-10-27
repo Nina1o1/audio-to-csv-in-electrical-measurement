@@ -2,15 +2,11 @@
 
 技术栈：Vue 3、TypeScript strict、Vite、Vitest。
 
-当前阶段：Phase 2 Mock UI 交互。支持草稿编辑、确认/取消、模拟监听与转写、历史编辑副本、筛选排序、当前查询全选，以及成功/失败/结果待核对场景。
-
-所有数据仅在本次页面内存中；不接入真实 M1–M5，不访问 localStorage、麦克风或下载。正常 Mock 启动、确认后的保存和首次历史初始化会自动完成；无需点击场景结果按钮。页面下方“Mock 测试工具”默认折叠，可用鼠标或键盘展开；已移除手动返回启动/保存结果及取消模拟启动控件。首次短暂显示加载中后自动载入两条内存示例。失败与结果不确定可预先在“Mock 测试工具”中选择，解析仍通过预设控件演示。
-
-已确认：筛选后清除不可见选择，表头全选仅作用于当前查询结果；导出全部仍不受筛选限制。刷新后重新初始化。下一阶段须经用户确认。
+Checkpoint B 已完成前端业务接线：M1 最终语音经 App → M2 → M3 更新唯一草稿，语音和手动编辑共用同一草稿；语音命令与按钮共用保存／删除确认流程。正式历史由 M4 持久化到当前来源的 localStorage，M5 导出 CSV。草稿及本次转写刷新后丢失。
 
 ## 开发与验证
 
-使用 Node 24.22.1（见 `.nvmrc`）；如果使用 nvm，可执行 `nvm install`、`nvm use`。现有终端若仍使用 Node 23，先切换版本，不修改项目 engines 绕过要求。
+使用 Node 24.22.1（见 `.nvmrc`）。
 
 ```bash
 npm ci
@@ -18,47 +14,49 @@ npm run dev
 ```
 
 ```bash
-npx vue-tsc --noEmit
 npm run type-check
-npm test
+npm run test -- --run
 npm run build
 ```
 
-根 tsconfig 覆盖源码与测试；type-check 额外检查 Node 配置文件。npm test 执行 Mock 协调流程和 Vue 服务端渲染回归测试；浏览器实际交互、焦点和布局另外验收。
+类型检查覆盖源码、测试及构建配置。Vitest 使用浏览器、音频、网络和下载替身，不会启动真实麦克风或调用付费讯飞服务。保留的 Phase 2 Mock 仅供测试，不连接生产 App。
 
-本阶段使用已有依赖，没有新增第三方包；本阶段范围与检查结果见 [Phase 2 报告](documentation/docs/phase-2-report.md)。
+## 真实语音运行前提
+
+桌面 Chrome／Edge，通过 HTTPS（本地开发可使用 localhost）访问。LISTENING 使用浏览器中文语音命令识别，RECORDING 使用已有讯飞 IAT 安全代理；浏览器及语音服务可用性需要真机验证。
+
+按 [已有代理部署说明](infrastructure/m1-speech-proxy/README.md) 配置同源 `/api/m1/*` 路由、访问口令及服务端讯飞凭据。前端构建不包含代理，不部署 Worker，不安装额外服务；Vite 默认也不会转发这些路由。仅运行 `npm run dev` 不代表已具备真实讯飞连接。
+
+展开页面“语音代理访问”，输入共享访问口令并登录。该口令不是讯飞 APIKey／APISecret；前端提交后清空输入框，不写入 localStorage。服务端使用 HttpOnly Cookie 管理已有会话；有效会话可直接开始监听。
+
+本地真实语音开发使用已有 Worker 同时提供完整 App 和 `/api/m1/*`，避免 Vite 5173 仅有页面、没有语音接口的问题：
+
+```bash
+# 先在 infrastructure/m1-speech-proxy/.dev.vars 配置已有服务端变量（不要提交凭据）
+npm run dev:voice
+# 若 8787 已被独立 M1 验收代理占用，可先停止旧进程，或使用另一端口：
+npm run dev:voice -- --port 8788
+```
+
+打开命令输出的 `https://localhost:8787/`（或所选端口），接受本地开发证书后，在这个页面内登录语音代理再开始监听。该命令沿用已有固定版本 Wrangler，由 npm 首次准备开发工具，不新增项目运行依赖、不部署云端服务；构建输出位于临时目录，修改代码后需重启命令重新构建。单独的 `npm run dev` 仍用于前端热更新和手动功能。
+
+浏览器 localStorage 按协议、主机及端口隔离：5173、8787、8788 的历史互不共享，原有历史仍保留在原来源；切换测试地址前可先导出需要的记录。
+
+点击“开始监听”，说“开始输入”。录入有权限和服务连接延迟，应先验证设备就绪再讲话；当前公开接口不提供底层音频就绪事件。实时 confirmed／interim 文本仅展示。说完后保持安静，讯飞返回活动会话最终结果时自动完成本段；也可说“结束输入”或点击“结束录入”。等待 LISTENING 后开始下一段。
+
+录入期间可手动编辑草稿；点击保存／删除将先完成当前录入并合并最终文本，再进入原有确认流程。确认期间只能“修改”或“保留”返回编辑。保存明确失败时保留草稿及 pending 身份供重试；未知结果沿用“核对保存结果”入口。语音失败不影响手动输入和可用的本地历史功能。
+
+完整人工验收见 [Checkpoint B 检查清单](documentation/docs/checkpoint-b-verification.md)。真实麦克风、代理登录、平台 WebSocket 和讯飞连通性尚需部署后验证。
 
 ## 项目结构
 
-```text
-documentation/
-  docs/                    已确认的模型、架构、接口和页面要求
-  interfaces/              已有模块接口文档目录
-src/
-  App.vue                  页面组合及 Mock 协调入口
-  components/              语音、草稿、历史和确认框展示组件
-  mock/                    可替换的局部 Mock UI 协调及内存示例
-  contracts/               公开契约声明的预留目录
-  shared/                  UI 使用的共享数据模型
-  modules/
-    m1-speech-recognition/  语音识别
-    m2-text-parser/         文本解析
-    m3-draft-manager/       内存草稿与确认状态
-    m4-record-manager/      正式记录和 localStorage
-    m5-csv-exporter/        CSV 生成和下载
-public/                    无需构建处理的静态资源
-tests/
-  unit/
-    shared/                共享逻辑测试预留目录
-    ui/                    
-    m1-speech-recognition/
-    m2-text-parser/
-    m3-draft-manager/
-    m4-record-manager/
-    m5-csv-exporter/
-  integration/             后续验证 App 调用顺序与一致性
-```
+- `src/App.vue`：页面组合与事件绑定。
+- `src/app/useManualWorkflow.ts`：App 协调层，串联 M1–M5；文件名沿用现有手动集成入口。
+- `src/components/`：语音、草稿、历史和确认框展示组件。
+- `src/contracts/`、`src/shared/`：公开接口与共享模型。
+- `src/modules/`：独立 TypeScript 业务模块，不相互调用。
+- `src/mock/`：独立的旧 UI 测试设施。
+- `tests/integration/`：App 协调、真实模块串联和 Vue 组件事件回归。
+- `infrastructure/m1-speech-proxy/`：已有安全代理；与静态前端分开部署。
 
-Vue 仅用于页面，业务模块保持独立 TypeScript。模块之间由 App 协调；共享模型和公开方法签名不变。
-
-规范入口：[Architecture](documentation/docs/architecture.md)、[Public Interface](documentation/docs/public-interface.md)、[Data Models](documentation/docs/data-models.md)、[页面要求](documentation/docs/page-requirements.md)。
+规范入口：[Architecture](documentation/docs/architecture.md)、[Public Interface](documentation/docs/public-interface.md)、[Data Models](documentation/docs/data-models.md)、[页面要求](documentation/docs/page-requirements.md)。公开接口、共享模型、标准单位及存储格式保持不变，没有新增依赖。

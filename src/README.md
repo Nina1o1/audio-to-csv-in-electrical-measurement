@@ -1,7 +1,9 @@
 # 源码目录
 
-Phase 2：App 组合展示组件，并使用 mock/useMockUi.ts 中每次调用独立创建的局部 UI 状态。Mock 仅演示交互，不实现或调用真实 M1–M5；不访问 localStorage、麦克风、网络服务或下载 API。
+App.vue 组合展示组件，通过 app/useManualWorkflow.ts 协调真实 M1–M5。该入口沿用原有文件名，在既有手动／历史／CSV 闭环上接入语音，不创建第二份草稿。
 
-shared/data-models.ts 复用 Data Models 的模型和既有状态。components 只接收展示数据并发出操作事件；真实公开接口声明及独立业务模块留待后续阶段。
+M1 的实时快照只展示；完成片段在通知结束后由 App 调用同步 M2，再交给 M3 稀疏合并。App 仅维护 UI 快照、录入上下文、单个收尾后动作及保存结果协调；模块独占业务数据和状态。订阅、启动请求、命令微任务和代理访问在卸载时失效或清理。
 
-后续集成时替换 App 的 Mock 协调入口及预设场景控件，展示组件可以继续使用。源码、测试及构建配置均接受 strict 类型检查。
+components 只接收展示数据并发出操作事件。口令输入只属于组件临时表单，提交即清空；认证请求由 App 调用既有同源代理。mock/useMockUi.ts 仅由测试使用，不接入生产页面。
+
+shared/data-models.ts 与 contracts 保持已确认的模型和方法签名。源码、测试和构建配置均接受 strict 类型检查。

@@ -46,16 +46,21 @@ describe('UI layout regression', () => {
     expect(html.match(/<button[^>]*>保存<\/button>/)?.[0]).toContain('disabled')
   })
 
-  it('removes Mock tools, keeps voice unavailable and gates exports until history is ready', async () => {
+  it('offers real listening without Mock tools and gates recording/export until ready', async () => {
     const html = await renderToString(createSSRApp(App))
     for (const text of ['Mock 测试工具', '执行模拟命令', '返回模拟解析结果', '模拟核对结果']) {
       expect(html).not.toContain(text)
     }
-    for (const text of ['开始监听', '结束录入', '导出选中记录至 CSV', '导出全部记录至 CSV']) {
+    for (const text of ['结束录入', '导出选中记录至 CSV', '导出全部记录至 CSV']) {
       const button = (html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []).find(value => value.includes(text))
       expect(button).toBeDefined()
       expect(button).toContain('disabled')
     }
+    const listen = (html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []).find(value => value.includes('开始监听'))
+    expect(listen).toBeDefined()
+    expect(listen).not.toContain('disabled')
+    expect(html).toContain('语音代理访问')
+    expect(html).not.toContain('Mock ·')
     expect(html).not.toContain('CSV 导出尚未接入')
     expect(html).toContain('导出全部不受筛选限制')
   })

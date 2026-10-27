@@ -2,6 +2,8 @@ import { createRenderer, nextTick } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from '../../src/App.vue'
 import type { InspectionRecord } from '../../src/shared/data-models'
+import * as speechModule from '../../src/modules/m1-speech-recognition'
+import { mockSpeech } from '../helpers/mock-speech'
 
 // A small Vue renderer host exercises the actual SFC events/lifecycle without a new DOM dependency.
 // It models only the input values, tree operations and dialog methods these components use.
@@ -108,6 +110,64 @@ async function fill(page: ReturnType<typeof mountPage>) {
 }
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
+
+describe('Checkpoint B: actual voice component bindings', () => {
+  it('renders real state/text and merges voice with manual fields, then saves through spoken confirmation', async () => {
+    let contents: string | null = null
+    const setItem = vi.fn((_key: string, value: string) => { contents = value })
+    vi.stubGlobal('localStorage', { getItem: () => contents, setItem })
+    const speech = mockSpeech()
+    vi.spyOn(speechModule, 'createSpeechRecognition').mockReturnValue(speech.module)
+    const page = mountPage()
+    await nextTick()
+    await page.edit('draft-work-order', 'MANUAL')
+    await page.click('开始监听'); expect(page.root.textContent).toContain('取消启动')
+    speech.ready(); await nextTick()
+    speech.command('START_INPUT'); await nextTick(); await nextTick()
+    expect(page.root.textContent).toContain('RECORDING')
+    expect(page.button('停止监听').matches(':disabled')).toBe(true)
+    speech.update('接触电阻12毫欧', '耐压…'); await nextTick()
+    expect(page.root.textContent).toContain('耐压…')
+    expect(page.input('draft-contactResistance').value).toBe('')
+    await page.click('结束录入'); expect(speech.module.stopRecording).toHaveBeenCalledOnce()
+    speech.complete('料号C-045，接触电阻12毫欧，绝缘电阻500兆欧，耐压1500伏通过')
+    speech.ready(); await nextTick(); await nextTick()
+    expect(page.input('draft-work-order').value).toBe('MANUAL')
+    expect(page.input('draft-contactResistance').value).toBe('12')
+    speech.command('SAVE'); await nextTick(); await nextTick()
+    expect(page.root.textContent).toContain('确认保存当前草稿？')
+    expect(page.input('draft-work-order').matches(':disabled')).toBe(true)
+    speech.command('CONFIRM_SAVE'); await nextTick(); await nextTick()
+    expect(setItem).toHaveBeenCalledOnce()
+    expect(JSON.parse(contents ?? '[]')[0]).toMatchObject({ workOrder: 'MANUAL', contactResistance: 12, result: 'PASS' })
+    expect(page.input('draft-work-order').value).toBe('')
+    page.app.unmount(); await nextTick()
+    expect(speech.listenerCount()).toBe(0)
+    expect(speech.module.stopListening).toHaveBeenCalledOnce()
+  })
+
+  it('clears the access password, binds login/logout, and keeps manual edits usable on speech failure', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() })
+    const speech = mockSpeech()
+    vi.spyOn(speechModule, 'createSpeechRecognition').mockReturnValue(speech.module)
+    const fetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fetch)
+    const page = mountPage()
+    await nextTick()
+    await page.edit('voice-password', 'test-access-password')
+    await page.click('登录语音代理'); await nextTick()
+    expect(page.input('voice-password').value).toBe('')
+    expect(fetch).toHaveBeenCalledWith('/api/m1/login', expect.objectContaining({ body: JSON.stringify({ password: 'test-access-password' }) }))
+    expect(page.root.textContent).toContain('登录成功')
+    await page.click('开始监听'); speech.fault(); await nextTick(); await nextTick()
+    expect(page.root.textContent).toContain('麦克风权限被拒绝')
+    await page.edit('draft-work-order', 'STILL EDITABLE')
+    expect(page.input('draft-work-order').value).toBe('STILL EDITABLE')
+    await page.click('退出语音代理'); await nextTick()
+    expect(fetch).toHaveBeenCalledWith('/api/m1/logout', expect.objectContaining({ method: 'POST' }))
+    page.app.unmount(); await nextTick()
+  })
+})
 
 describe('Checkpoint A: actual App component bindings', () => {
   it('routes real input/confirmation events, preserves zero, clears empty input, and reloads persisted history', async () => {

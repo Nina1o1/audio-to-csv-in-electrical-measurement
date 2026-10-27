@@ -5,33 +5,44 @@ import { tmpdir } from 'node:os'
 import { build } from 'vite'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { parseArgs } from 'node:util'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
-const local = process.argv.includes('--local')
+const { values } = parseArgs({ options: {
+  local: { type: 'boolean', default: false },
+  app: { type: 'boolean', default: false },
+  port: { type: 'string', default: '8787' },
+} })
+const { local, app, port } = values
+if (!/^\d+$/.test(port) || Number(port) < 1024 || Number(port) > 65535) {
+  throw new Error('--port must be an integer between 1024 and 65535.')
+}
 if (local && !existsSync(join(root, 'infrastructure/m1-speech-proxy/.dev.vars'))) {
   throw new Error('Fill infrastructure/m1-speech-proxy/.dev.vars before starting the local proxy.')
 }
 
-// Build a separate acceptance page; never rewrite the production App or its dist directory.
-const outDir = await mkdtemp(join(tmpdir(), 'm1-acceptance-'))
+// Both entry points reuse the existing same-origin HTTPS Worker, without modifying dist.
+const outDir = await mkdtemp(join(tmpdir(), app ? 'm1-app-' : 'm1-acceptance-'))
 await build({
-  root, configFile: false,
+  root, ...(app ? {} : { configFile: false }),
   build: {
     outDir, emptyOutDir: false,
-    rolldownOptions: { input: fileURLToPath(new URL('./m1-acceptance.html', import.meta.url)) },
+    ...(app ? {} : { rolldownOptions: { input: fileURLToPath(new URL('./m1-acceptance.html', import.meta.url)) } }),
   },
 })
-console.log(`M1 acceptance output: ${outDir}`)
-console.log('Serve its files under the same HTTPS origin as /api/m1/*, then open /tests/manual/m1-acceptance.html.')
+console.log(`M1 ${app ? 'App' : 'acceptance'} output: ${outDir}`)
+const page = app ? '/' : '/tests/manual/m1-acceptance.html'
+console.log(`Serve its files under the same HTTPS origin as /api/m1/*, then open ${page}.`)
 
 if (local) {
   // Run the existing proxy locally; never deploy, tunnel, or expose it on the LAN.
-  console.log('Local M1 test: https://localhost:8787/tests/manual/m1-acceptance.html')
+  console.log(`Local M1 ${app ? 'App' : 'test'}: https://localhost:${port}${page}`)
+  console.log('If this port is already occupied, stop that proxy first or pass --port with another port.')
   const child = spawn('npm', [
     'exec', '--yes', '--package=wrangler@4.153.0', '--', 'wrangler', 'dev', '--local',
     '--config', 'infrastructure/m1-speech-proxy/wrangler.jsonc',
-    '--assets', outDir, '--var', 'APP_ORIGIN:https://localhost:8787',
-    '--local-protocol', 'https', '--ip', '127.0.0.1', '--port', '8787',
+    '--assets', outDir, '--var', `APP_ORIGIN:https://localhost:${port}`,
+    '--local-protocol', 'https', '--ip', '127.0.0.1', '--port', port,
     '--log-level', 'warn', '--show-interactive-dev-session', 'false',
   ], { cwd: root, stdio: 'inherit', env: { ...process.env, CLOUDFLARE_SEND_METRICS: 'false' } })
   child.on('error', () => { console.error('Could not start the local proxy. Check Node.js and npm.'); process.exitCode = 1 })

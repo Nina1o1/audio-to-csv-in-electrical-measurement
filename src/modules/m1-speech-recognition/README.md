@@ -63,7 +63,7 @@ IDLE不识别命令；LISTENING识别全部八命令；RECORDING仅识别STOP_IN
 错误中断只保留confirmed。通知期间调用变更方法会拒绝；只读getState可调用。
 订阅独立、取消幂等，回调收到独立payload；订阅异常仅作固定内容日志，不传播敏感异常内容。
 
-## 后续App接线示例（本次没有接线）
+## App接线约束示例
 
 ```typescript
 const speech = createSpeechRecognition()
@@ -96,7 +96,7 @@ npm run build
 ```
 
 测试替换浏览器边界和代理运行时；正式模块有真实Web Speech、AudioWorklet和WebSocket路径。
-生产构建仍是原手动App，M1未接入该页面；代理单独部署，Vite不会打包服务端密钥。
+Checkpoint B 已由 App 协调层接入 M1、M2 与唯一 M3 草稿；代理仍单独部署，Vite不会打包服务端密钥。
 真实Chrome中文能力、工厂噪声、权限/后台行为、讯飞连通/计费、双连接权限、代理运行时及网络延迟
 尚需部署后验收。普通互联网不保证浏览器语音服务可达；失败应保留手动功能。
 

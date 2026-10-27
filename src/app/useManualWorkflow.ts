@@ -2,6 +2,10 @@ import { computed, reactive, ref, shallowRef } from 'vue'
 import type { DraftManagerModule, DraftValidationError } from '../contracts/m3-draft-manager'
 import type { RecordErrorCode, RecordManagerModule, RecordQuery, RecordUpdate } from '../contracts/m4-record-manager'
 import type { CsvExporterModule } from '../contracts/m5-csv-exporter'
+import type { SpeechRecognitionModule } from '../contracts/m1-speech-recognition'
+import type { TextParserModule } from '../contracts/m2-text-parser'
+import { createSpeechRecognition } from '../modules/m1-speech-recognition'
+import { createTextParser } from '../modules/m2-text-parser'
 import { createDraftManager } from '../modules/m3-draft-manager'
 import { createRecordManager } from '../modules/m4-record-manager'
 import { createCsvExporter } from '../modules/m5-csv-exporter'
@@ -80,11 +84,31 @@ export function useManualWorkflow(options: {
   draftManager?: DraftManagerModule
   createRecords?: () => RecordManagerModule
   csvExporter?: CsvExporterModule
+  speechRecognition?: SpeechRecognitionModule
+  textParser?: TextParserModule
 } = {}) {
   const manager = options.draftManager ?? createDraftManager()
   const makeRecords = options.createRecords ?? createRecordManager
   let records = makeRecords()
   const csvExporter = options.csvExporter ?? createCsvExporter()
+  const speech = options.speechRecognition ?? createSpeechRecognition()
+  const parser = options.textParser ?? createTextParser()
+  const microphone = ref(speech.getState())
+  const starting = ref(false)
+  const processing = ref(false)
+  const stopping = ref(false)
+  const inputActive = ref(false)
+  const confirmedText = ref('')
+  const interimText = ref('')
+  const textComplete = ref(false)
+  const speechError = ref('')
+  const authenticating = ref(false)
+  const authMessage = ref('请先登录语音代理；已有有效登录可直接开始监听。')
+  let authRequest: AbortController | undefined
+  let startRequest: object | undefined
+  let speechEpoch = 0
+  let input: { completed: boolean } | undefined
+  let afterInput: 'save' | 'delete' | undefined
   const draft = shallowRef(manager.getDraft())
   const draftState = ref(manager.getState())
   const rows = shallowRef<InspectionRecord[]>([])
@@ -107,15 +131,165 @@ export function useManualWorkflow(options: {
   let appliedQuery: RecordQuery = {}
   const disposed = ref(false)
   const idle = computed(() => !disposed.value && !busy.value && !awaitingCheck.value && draftState.value === 'IDLE')
-  const editable = computed(() => idle.value && historyAction.value === null)
+  const editable = computed(() => idle.value && !processing.value && historyAction.value === null)
   const canSave = computed(() => editable.value && historyStatus.value === 'ready')
-  const historyWritable = canSave
+  const historyWritable = computed(() => canSave.value && !inputActive.value)
   const canExport = computed(() => historyWritable.value && !renderError.value && !historyRenderError.value)
   const allSelected = computed(() => rows.value.length > 0
     && rows.value.every(record => selectedIds.value.includes(record.id)))
   const partiallySelected = computed(() => selectedIds.value.length > 0 && !allSelected.value)
   const unsubscribeDraft = manager.onDraftChange(value => { draft.value = value })
   const unsubscribeState = manager.onStateChange(value => { draftState.value = value })
+
+  function clearTranscript(): void {
+    speechEpoch++
+    input = undefined
+    inputActive.value = false
+    afterInput = undefined
+    processing.value = false
+    stopping.value = false
+    confirmedText.value = ''
+    interimText.value = ''
+    textComplete.value = false
+  }
+
+  function startInput(): void {
+    if (!editable.value || input || authenticating.value || speech.getState() !== 'LISTENING') return rejectOperation()
+    input = { completed: false }
+    inputActive.value = true
+    confirmedText.value = ''; interimText.value = ''; textComplete.value = false
+    speechError.value = ''
+    speech.startRecording()
+  }
+
+  function stopInput(): void {
+    if (disposed.value || !input || input.completed || stopping.value) return
+    stopping.value = true
+    speech.stopRecording()
+  }
+
+  const unsubscribeSpeech = [
+    speech.onStateChange(value => {
+      if (disposed.value) return
+      microphone.value = value
+      // End queued command work on service failure, but still accept its confirmed final segment.
+      if (value === 'IDLE') speechEpoch++
+    }),
+    speech.onTranscriptUpdate(value => {
+      if (disposed.value || !input || input.completed) return
+      confirmedText.value = value.confirmedText
+      interimText.value = value.interimText
+    }),
+    speech.onTranscriptComplete(segment => {
+      const current = input
+      if (disposed.value || !current || current.completed) return
+      // Consume at receipt. M1 owns recognition deduplication; App owns this draft context.
+      current.completed = true
+      processing.value = true
+      queueMicrotask(() => {
+        if (disposed.value || input !== current) return
+        let accepted = false
+        try {
+          if (!idle.value || historyAction.value !== null) {
+            speechError.value = '当前草稿不可编辑，未应用本次语音。'
+            return
+          }
+          confirmedText.value = segment.text; interimText.value = ''; textComplete.value = true
+          if (segment.text.trim()) {
+            const result = parser.parse(segment)
+            if (Object.keys(result).length) manager.applyParseResult(result)
+          }
+          errors.value = []
+          accepted = true
+        } catch (error: unknown) {
+          speechError.value = `语音文本处理失败，草稿保留：${errorText(error)}`
+        } finally {
+          const action = afterInput
+          input = undefined; inputActive.value = false; afterInput = undefined
+          processing.value = false; stopping.value = false
+          if (accepted && action === 'save') requestSave()
+          if (accepted && action === 'delete') requestDelete()
+        }
+      })
+    }),
+    speech.onError(error => {
+      if (!disposed.value) speechError.value = `语音错误：${error.message}`
+    }),
+    speech.onCommand(command => {
+      if (speech.getState() === 'IDLE') return
+      const epoch = speechEpoch, current = input
+      const recording = speech.getState() === 'RECORDING'
+      // M1 callbacks reject nested mutations. Route only after the entire notification ends.
+      queueMicrotask(() => {
+        if (disposed.value || epoch !== speechEpoch) return
+        if (recording && command !== 'STOP_INPUT') return rejectOperation()
+        switch (command) {
+          case 'START_INPUT': return startInput()
+          case 'STOP_INPUT': if (input === current) stopInput(); return
+          case 'SAVE': return requestSave()
+          case 'DELETE': return requestDelete()
+          case 'CONFIRM_SAVE': return confirmSave()
+          case 'CONFIRM_DELETE': return confirmDelete()
+          case 'MODIFY':
+            if (manager.getState() === 'CONFIRMING_SAVE') return cancelConfirmation()
+            break
+          case 'KEEP':
+            if (manager.getState() === 'CONFIRMING_DELETE') return cancelConfirmation()
+            break
+        }
+        rejectOperation()
+      })
+    }),
+  ]
+
+  async function toggleListening(): Promise<void> {
+    if (disposed.value || authenticating.value || speech.getState() === 'RECORDING') return
+    if (starting.value || speech.getState() === 'LISTENING') {
+      speechEpoch++
+      startRequest = undefined; starting.value = false
+      speech.stopListening()
+      microphone.value = speech.getState()
+      return
+    }
+    const request = {}
+    startRequest = request; starting.value = true; speechError.value = ''
+    try { await speech.startListening() }
+    catch { /* Faults are displayed once via onError; explicit cancellation is silent. */ }
+    finally {
+      if (!disposed.value && startRequest === request) {
+        startRequest = undefined; starting.value = false
+        microphone.value = speech.getState()
+      }
+    }
+  }
+
+  async function authenticateVoice(action: 'login' | 'logout', password = ''): Promise<void> {
+    if (disposed.value || authenticating.value) return
+    // Stopping may asynchronously finish a recording; it must not apply after logout/login.
+    clearTranscript(); startRequest = undefined; starting.value = false
+    speech.stopListening()
+    const request = new AbortController()
+    authRequest = request; authenticating.value = true
+    try {
+      const response = await fetch(`/api/m1/${action}`, {
+        method: 'POST', credentials: 'same-origin', signal: request.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: action === 'login' ? JSON.stringify({ password }) : undefined,
+      })
+      if (!disposed.value) authMessage.value = response.ok
+        ? action === 'login' ? '语音代理登录成功，可以开始监听。' : '已退出语音代理。'
+        : '语音代理操作失败，请检查访问口令和同源代理配置。'
+    } catch {
+      if (!disposed.value) authMessage.value = '无法连接语音代理，请检查网络及同源部署。'
+    } finally {
+      if (!disposed.value && authRequest === request) {
+        authRequest = undefined; authenticating.value = false
+      }
+    }
+  }
+
+  function loginVoice(password: string): Promise<void> { return authenticateVoice('login', password) }
+  function logoutVoice(): Promise<void> { return authenticateVoice('logout') }
 
   function showRows(snapshot: InspectionRecord[]): void {
     rows.value = snapshot
@@ -245,6 +419,12 @@ export function useManualWorkflow(options: {
 
   /** M3 validates and freezes; no record identity exists until confirmSave. */
   function requestSave(): void {
+    if (input) {
+      if (!idle.value || historyAction.value || historyStatus.value !== 'ready' || afterInput) return rejectOperation()
+      afterInput = 'save'
+      stopInput()
+      return
+    }
     if (!canSave.value) return rejectOperation()
     try {
       const validation = manager.requestSave()
@@ -255,6 +435,12 @@ export function useManualWorkflow(options: {
 
   /** Request deletion of the M3 draft only; a history dialog prevents concurrent actions. */
   function requestDelete(): void {
+    if (input) {
+      if (!idle.value || historyAction.value || afterInput) return rejectOperation()
+      afterInput = 'delete'
+      stopInput()
+      return
+    }
     if (!editable.value) return rejectOperation()
     try { manager.requestDelete(); message.value = '确认删除当前草稿？' }
     catch (error: unknown) { message.value = `无法请求删除：${errorText(error)}` }
@@ -277,6 +463,7 @@ export function useManualWorkflow(options: {
     if (disposed.value || busy.value || awaitingCheck.value || manager.getState() !== 'CONFIRMING_DELETE') return rejectOperation()
     try {
       manager.confirmDelete()
+      clearTranscript()
       pending.value = null
       errors.value = []
       message.value = '已删除草稿，历史记录不变。'
@@ -384,6 +571,7 @@ export function useManualWorkflow(options: {
     }
     pending.value = null
     awaitingCheck.value = false
+    clearTranscript()
     errors.value = []
     message.value = '保存成功。'
     if (refreshHistory() && !rows.value.some(record => record.id === id)) {
@@ -458,7 +646,12 @@ export function useManualWorkflow(options: {
 
   /** Release subscriptions on page unmount; drafts are intentionally never persisted. */
   function dispose(): void {
+    if (disposed.value) return
     disposed.value = true
+    speechEpoch++; input = undefined; afterInput = undefined; startRequest = undefined
+    authRequest?.abort()
+    for (const unsubscribe of unsubscribeSpeech) unsubscribe()
+    speech.stopListening()
     unsubscribeDraft(); unsubscribeState(); unsubscribeRecords()
   }
 
@@ -478,6 +671,8 @@ export function useManualWorkflow(options: {
   }
 
   return {
+    microphone, starting, processing, stopping, confirmedText, interimText, textComplete, speechError,
+    authenticating, authMessage, loginVoice, logoutVoice, toggleListening, stopInput,
     draft, draftState, rows, selectedIds, allSelected, partiallySelected, select, selectAll, canExport, exportRecords,
     historyStatus, historyError, displayError, message, errors,
     pending, awaitingCheck, busy, filters, editable, canSave, renderError, historyRenderError, reportRenderError, retryRender,

@@ -1,7 +1,17 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { MicrophoneState } from '../shared/data-models'
-defineProps<{ microphone: MicrophoneState; starting: boolean; processing: boolean; confirmedText: string; interimText: string; textComplete: boolean }>()
-const emit = defineEmits<{ listen: []; stop: [] }>()
+defineProps<{ microphone: MicrophoneState; starting: boolean; processing: boolean; stopping: boolean; confirmedText: string; interimText: string; textComplete: boolean; authenticating: boolean; authMessage: string }>()
+const emit = defineEmits<{ listen: []; stop: []; login: [password: string]; logout: [] }>()
+const password = ref('')
+function passwordInput(event: Event): void {
+  if (event.target instanceof HTMLInputElement) password.value = event.target.value
+}
+function login(): void {
+  const value = password.value
+  password.value = ''
+  emit('login', value)
+}
 </script>
 <template>
   <section class="panel keywords-panel" aria-labelledby="keywords-title">
@@ -17,8 +27,8 @@ const emit = defineEmits<{ listen: []; stop: [] }>()
     <div class="section-heading">
       <h2 id="voice-title">实时语音转写文本</h2>
       <div class="actions">
-        <span class="status">文本状态：{{ microphone === 'RECORDING' ? '倾听中' : textComplete ? '文本编译完成' : '空白' }}</span>
-        <button type="button" :disabled="starting || microphone === 'RECORDING'" aria-describedby="voice-note" @click="emit('listen')">{{ starting ? '模拟启动中' : microphone === 'IDLE' ? '开始监听' : '停止监听' }}</button>
+        <span class="status">文本状态：{{ processing ? '正在结构化解析' : textComplete ? '文本编译完成' : microphone === 'RECORDING' ? '倾听中' : '空白' }}</span>
+        <button type="button" :disabled="authenticating || microphone === 'RECORDING'" aria-describedby="voice-note" @click="emit('listen')">{{ starting ? '取消启动' : microphone === 'IDLE' ? '开始监听' : '停止监听' }}</button>
       </div>
     </div>
     <div class="transcript" aria-label="本次实时转写文本">
@@ -26,8 +36,18 @@ const emit = defineEmits<{ listen: []; stop: [] }>()
       <p><span>临时文本</span><span class="muted">{{ interimText || '暂无临时文本' }}</span></p>
     </div>
     <div class="panel-footer">
-      <p id="voice-note" class="muted">Mock · {{ microphone }} · {{ processing ? '正在结构化解析' : '预设文本' }}。状态：空白 → 倾听中 → 文本编译完成。倾听中不可切换监听；结束录入保留已确认文本。</p>
-      <button type="button" :disabled="microphone !== 'RECORDING'" aria-describedby="voice-note" @click="emit('stop')">结束录入</button>
+      <p id="voice-note" class="muted">{{ microphone }} · {{ stopping ? '正在结束录入，请稍候' : '说“开始输入”后等待录入就绪再讲话；停顿后自动完成本段，也可说“结束输入”或点击结束录入。' }} 录入中不可切换监听；仅最终确认文本用于更新草稿。</p>
+      <button type="button" :disabled="microphone !== 'RECORDING' || stopping || textComplete" aria-describedby="voice-note" @click="emit('stop')">结束录入</button>
     </div>
+    <details>
+      <summary>语音代理访问</summary>
+      <label for="voice-password">语音访问口令（不是讯飞密钥）</label>
+      <input id="voice-password" type="password" autocomplete="off" :value="password" :disabled="authenticating || microphone === 'RECORDING'" @input="passwordInput" @keydown.enter.prevent="login">
+      <div class="actions">
+        <button type="button" :disabled="authenticating || microphone === 'RECORDING' || !password" @click="login">登录语音代理</button>
+        <button type="button" :disabled="authenticating || microphone === 'RECORDING'" @click="emit('logout')">退出语音代理</button>
+      </div>
+      <p role="status">{{ authenticating ? '正在连接语音代理…' : authMessage }}</p>
+    </details>
   </section>
 </template>
