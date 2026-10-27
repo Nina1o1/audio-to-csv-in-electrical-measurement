@@ -29,8 +29,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
       <button type="button" :disabled="status !== 'ready'" @click="emit('query')">查询</button>
     </div>
     <p v-if="status === 'loading'" role="status">历史加载中…</p>
-    <p v-else-if="status === 'error'" role="alert">历史读取错误，保存已禁用，原始存储未被清空。</p>
-    <p v-else-if="!records.length">当前查询无记录。</p>
+    <p v-else-if="status === 'ready' && !records.length">当前查询无记录。</p>
     <div class="table-scroll" role="region" aria-label="历史记录表格，可横向滚动" tabindex="0">
       <table class="history-table">
         <caption class="sr-only">本地质检历史记录</caption>
