@@ -32,7 +32,7 @@ onErrorCaptured((error, instance) => {
     <ErrorToast :notification="notification" />
     <header class="page-header"><h1>工业质检语音录入系统</h1></header>
     <p id="manual-note" class="preview-note" tabindex="-1">当前已接入手动草稿与浏览器本地历史记录，支持新增、查询、编辑、删除和 CSV 导出。草稿刷新后丢失；语音与手动编辑使用同一份草稿。</p>
-    <VoicePanel :microphone="ui.microphone" :starting="ui.starting" :processing="ui.processing" :stopping="ui.stopping" :confirmed-text="ui.confirmedText" :speech-error="ui.speechError" :text-complete="ui.textComplete" :authenticating="ui.authenticating" :auth-message="authStatusMessage" :can-start-input="ui.editable && !ui.inputActive && !ui.authenticating && ui.microphone === 'LISTENING'" :can-stop-input="ui.microphone === 'RECORDING' && ui.inputActive && !ui.processing && !ui.stopping" @listen="ui.toggleListening" @start="ui.startInput" @stop="ui.stopInput" @login="ui.loginVoice" @logout="ui.logoutVoice" />
+    <VoicePanel :microphone="ui.microphone" :starting="ui.starting" :processing="ui.processing" :stopping="ui.stopping" :confirmed-text="ui.confirmedText" :interim-text="ui.interimText" :speech-error="ui.speechError" :text-complete="ui.textComplete" :authenticating="ui.authenticating" :auth-message="authStatusMessage" :can-start-input="ui.editable && !ui.inputActive && !ui.authenticating && ui.microphone === 'LISTENING'" :can-stop-input="ui.microphone === 'RECORDING' && ui.inputActive && !ui.processing && !ui.stopping" @listen="ui.toggleListening" @start="ui.startInput" @stop="ui.stopInput" @login="ui.loginVoice" @logout="ui.logoutVoice" />
     <template v-if="!ui.renderError">
       <DraftPanel :draft="ui.draft" :disabled="!ui.editable" :save-disabled="!ui.canSave" :status="ui.draftState" @update="ui.updateField" @save="ui.requestSave" @delete="ui.requestDelete" />
       <HistoryPanel v-if="!ui.historyRenderError" v-model:filters="ui.filters" :records="ui.rows" :selected-ids="ui.selectedIds" :status="ui.historyStatus" :writable="ui.historyWritable" :all-selected="ui.allSelected" :partially-selected="ui.partiallySelected" :selection-disabled="!ui.historyWritable" :export-disabled="!ui.canExport" @export="actions.exportRecords" @query="actions.query" @select="ui.select" @select-all="ui.selectAll" @edit="actions.openHistoryEdit" @delete="actions.openHistoryDelete" />
@@ -45,6 +45,7 @@ onErrorCaptured((error, instance) => {
     </section>
     <div class="feedback" aria-live="polite">
       <p v-if="statusMessage">{{ statusMessage }}</p>
+      <p v-if="ui.historyStatus === 'error'">{{ ui.historyError }}</p>
       <button v-if="ui.historyStatus === 'error' && !ui.awaitingCheck" @click="actions.initialize">重试加载历史</button>
       <button v-if="ui.awaitingCheck" :disabled="ui.busy" @click="actions.checkSave">核对保存结果</button>
       <button v-if="ui.renderError || ui.historyRenderError" :disabled="ui.busy" @click="ui.retryRender">恢复页面展示</button>

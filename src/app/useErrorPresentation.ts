@@ -14,6 +14,7 @@ function isErrorMessage(message: string): boolean {
 function isAuthError(message: string): boolean {
   return message === '语音代理操作失败，请检查访问口令和同源代理配置。'
     || message === '无法连接语音代理，请检查网络及同源部署。'
+    || message === '语音代理连接超时，请重试；手动输入和历史记录仍可使用。'
 }
 
 export function useErrorPresentation(ui: WorkflowView, fieldLabels: Record<keyof DraftFields, string>) {
@@ -31,7 +32,8 @@ export function useErrorPresentation(ui: WorkflowView, fieldLabels: Record<keyof
     () => ui.displayError,
     () => messageError.value === '请修正以下草稿错误。' ? '' : messageError.value,
     () => ui.authenticating ? '' : isAuthError(ui.authMessage) ? ui.authMessage : '',
-    () => ui.historyStatus === 'error' ? '历史读取错误，保存已禁用，原始存储未被清空。' : '',
+    () => ui.historyStatus === 'error' && ui.historyError.startsWith('历史读取失败，')
+      ? '历史读取错误，保存已禁用，原始存储未被清空。' : '',
     () => ui.historyRenderError ? '历史展示异常，当前草稿及编辑副本仍保留。可重试恢复页面展示。' : '',
     () => ui.renderError ? '页面展示暂不可用，当前草稿仍保留在本页。可取消确认或重试展示，无需刷新。' : '',
   ]

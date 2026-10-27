@@ -9,6 +9,7 @@ import { createTextParser } from '../modules/m2-text-parser'
 import { createDraftManager } from '../modules/m3-draft-manager'
 import { createRecordManager } from '../modules/m4-record-manager'
 import { createCsvExporter } from '../modules/m5-csv-exporter'
+import { acquireHistoryWriter } from './history-writer'
 import type { DraftFields, InspectionRecord } from '../shared/data-models'
 
 /** Convert a device-local date/second to UTC; never silently choose a DST overlap offset. */
@@ -105,6 +106,11 @@ export function useManualWorkflow(options: {
   const authenticating = ref(false)
   const authMessage = ref('请先登录语音代理；已有有效登录可直接开始监听。')
   let authRequest: AbortController | undefined
+  let authTimer: ReturnType<typeof setTimeout> | undefined
+  let releaseWriter: (() => void) | undefined
+  let acquiringWriter = false
+  const writerHeld = ref(false)
+  let writerAcquiredBefore = false
   let startRequest: object | undefined
   let speechEpoch = 0
   let input: { completed: boolean } | undefined
@@ -132,7 +138,7 @@ export function useManualWorkflow(options: {
   const disposed = ref(false)
   const idle = computed(() => !disposed.value && !busy.value && !awaitingCheck.value && draftState.value === 'IDLE')
   const editable = computed(() => idle.value && !processing.value && historyAction.value === null)
-  const canSave = computed(() => editable.value && historyStatus.value === 'ready')
+  const canSave = computed(() => editable.value && writerHeld.value && historyStatus.value === 'ready')
   const historyWritable = computed(() => canSave.value && !inputActive.value)
   const canExport = computed(() => historyWritable.value && !renderError.value && !historyRenderError.value)
   const allSelected = computed(() => rows.value.length > 0
@@ -268,20 +274,32 @@ export function useManualWorkflow(options: {
     speech.stopListening()
     const request = new AbortController()
     authRequest = request; authenticating.value = true
+    let timedOut = false
+    let rejectAborted!: () => void
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectAborted = () => reject(new Error('Voice access request aborted.'))
+      request.signal.addEventListener('abort', rejectAborted, { once: true })
+    })
+    const timeout = setTimeout(() => { timedOut = true; request.abort() }, 10_000)
+    authTimer = timeout
     try {
-      const response = await fetch(`/api/m1/${action}`, {
+      const response = await Promise.race([fetch(`/api/m1/${action}`, {
         method: 'POST', credentials: 'same-origin', signal: request.signal,
         headers: { 'Content-Type': 'application/json' },
         body: action === 'login' ? JSON.stringify({ password }) : undefined,
-      })
-      if (!disposed.value) authMessage.value = response.ok
+      }), aborted])
+      if (!disposed.value && authRequest === request) authMessage.value = response.ok
         ? action === 'login' ? '语音代理登录成功，可以开始监听。' : '已退出语音代理。'
         : '语音代理操作失败，请检查访问口令和同源代理配置。'
     } catch {
-      if (!disposed.value) authMessage.value = '无法连接语音代理，请检查网络及同源部署。'
+      if (!disposed.value && authRequest === request) authMessage.value = timedOut
+        ? '语音代理连接超时，请重试；手动输入和历史记录仍可使用。'
+        : '无法连接语音代理，请检查网络及同源部署。'
     } finally {
+      clearTimeout(timeout)
+      request.signal.removeEventListener('abort', rejectAborted)
       if (!disposed.value && authRequest === request) {
-        authRequest = undefined; authenticating.value = false
+        authRequest = undefined; authTimer = undefined; authenticating.value = false
       }
     }
   }
@@ -318,10 +336,7 @@ export function useManualWorkflow(options: {
 
   function rejectOperation(): void { message.value = '当前状态不允许此操作。' }
 
-  /** Initialize/retry without losing an editable draft or treating a read error as empty history. */
-  function initialize(): void {
-    if (!editable.value) return rejectOperation()
-    historyStatus.value = 'loading'
+  function loadHistory(): void {
     try {
       records.initialize()
       historyStatus.value = 'ready'
@@ -332,6 +347,34 @@ export function useManualWorkflow(options: {
       return
     }
     refreshHistory()
+  }
+
+  /** Read history only while holding the origin's writer lease; reacquisition discards stale M4 memory. */
+  function initialize(): void {
+    if (!editable.value) return rejectOperation()
+    if (acquiringWriter) return
+    historyStatus.value = 'loading'
+    if (writerHeld.value) return loadHistory()
+    acquiringWriter = true
+    releaseWriter?.()
+    releaseWriter = acquireHistoryWriter(() => {
+      if (disposed.value) return
+      acquiringWriter = false
+      writerHeld.value = true
+      if (writerAcquiredBefore) {
+        unsubscribeRecords()
+        records = makeRecords()
+        unsubscribeRecords = subscribeRecords()
+      }
+      writerAcquiredBefore = true
+      loadHistory()
+    }, reason => {
+      if (disposed.value) return
+      acquiringWriter = false
+      writerHeld.value = false
+      historyStatus.value = 'error'
+      historyError.value = reason
+    })
   }
 
   /** Translate presentation controls only; filtering, validation and sorting remain in M4. */
@@ -515,7 +558,7 @@ export function useManualWorkflow(options: {
 
   function confirmHistory(action: 'edit' | 'delete'): void {
     const target = historyRecord.value
-    if (!idle.value || historyStatus.value !== 'ready' || historyAction.value !== action || !target) return rejectOperation()
+    if (!idle.value || !writerHeld.value || historyStatus.value !== 'ready' || historyAction.value !== action || !target) return rejectOperation()
     const form = historyFields.value
     if (action === 'edit' && !form) return rejectOperation()
     busy.value = true
@@ -590,7 +633,7 @@ export function useManualWorkflow(options: {
 
   /** One synchronous persistence attempt. Unknown outcomes must be reconciled, never guessed. */
   function confirmSave(): void {
-    if (disposed.value || busy.value || awaitingCheck.value || historyStatus.value !== 'ready'
+    if (disposed.value || busy.value || awaitingCheck.value || !writerHeld.value || historyStatus.value !== 'ready'
       || manager.getState() !== 'CONFIRMING_SAVE') return rejectOperation()
     busy.value = true
     try {
@@ -623,8 +666,8 @@ export function useManualWorkflow(options: {
         reloaded.initialize()
         records = reloaded
         unsubscribeRecords = subscribeRecords()
-        historyStatus.value = 'ready'
-        historyError.value = ''
+        historyStatus.value = writerHeld.value ? 'ready' : 'error'
+        if (writerHeld.value) historyError.value = ''
         found = records.getById(candidate.id)
       } catch (error: unknown) {
         message.value = `核对读取失败，继续冻结保存：${errorText(error)}`
@@ -648,6 +691,8 @@ export function useManualWorkflow(options: {
     disposed.value = true
     speechEpoch++; input = undefined; afterInput = undefined; startRequest = undefined
     authRequest?.abort()
+    clearTimeout(authTimer)
+    releaseWriter?.()
     for (const unsubscribe of unsubscribeSpeech) unsubscribe()
     speech.stopListening()
     unsubscribeDraft(); unsubscribeState(); unsubscribeRecords()

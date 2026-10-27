@@ -219,6 +219,33 @@ describe('Checkpoint B: App voice coordination', () => {
 })
 
 describe('existing same-origin voice access', () => {
+  it.each(['login', 'logout'] as const)('times out a stuck %s, permits retry and ignores late success', async action => {
+    vi.useFakeTimers()
+    try {
+      const { ui } = setup()
+      let resolveOld!: (value: { ok: boolean }) => void
+      let signal: AbortSignal | undefined
+      vi.stubGlobal('fetch', vi.fn((_url, options: RequestInit) => {
+        signal = options.signal ?? undefined
+        return new Promise<{ ok: boolean }>(resolve => { resolveOld = resolve })
+      }))
+      const request = action === 'login' ? ui.loginVoice('synthetic') : ui.logoutVoice()
+      await vi.advanceTimersByTimeAsync(10_000)
+      await request
+      expect(signal?.aborted).toBe(true)
+      expect(ui.authenticating).toBe(false)
+      expect(ui.authMessage).toContain('超时')
+      ui.updateField('workOrder', 'MANUAL')
+      expect(ui.canSave).toBe(true)
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
+      await ui.loginVoice('retry')
+      const message = ui.authMessage
+      resolveOld({ ok: true }); await flush()
+      expect(ui.authMessage).toBe(message)
+      expect(ui.draft.workOrder).toBe('MANUAL')
+      expect(vi.getTimerCount()).toBe(0)
+    } finally { vi.useRealTimers() }
+  })
   it('logs in without storing credentials, reports HTTP failure and supports logout', async () => {
     const { ui, speech, storage } = setup()
     const fetch = vi.fn().mockResolvedValueOnce({ ok: false }).mockResolvedValue({ ok: true })

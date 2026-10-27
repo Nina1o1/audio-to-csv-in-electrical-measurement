@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { MicrophoneState } from '../shared/data-models'
-defineProps<{ microphone: MicrophoneState; starting: boolean; processing: boolean; stopping: boolean; confirmedText: string; speechError: string; textComplete: boolean; authenticating: boolean; authMessage: string; canStartInput: boolean; canStopInput: boolean }>()
+defineProps<{ microphone: MicrophoneState; starting: boolean; processing: boolean; stopping: boolean; confirmedText: string; interimText?: string; speechError: string; textComplete: boolean; authenticating: boolean; authMessage: string; canStartInput: boolean; canStopInput: boolean }>()
 const emit = defineEmits<{ listen: []; start: []; stop: []; login: [password: string]; logout: [] }>()
 const password = ref('')
 function passwordInput(event: Event): void {
@@ -38,9 +38,10 @@ function login(): void {
     </div>
     <div class="transcript" aria-label="本次实时转写文本">
       <p class="muted">已确认文本</p>
+      <p v-if="confirmedText" class="transcript-final">{{ confirmedText }}</p>
+      <p v-if="interimText" class="muted">临时文本（待确认）：{{ interimText }}</p>
       <p v-if="microphone === 'IDLE'" class="transcript-final muted">请先点击“<strong>开始监听</strong>”</p>
-      <p v-else-if="confirmedText" class="transcript-final">{{ confirmedText }}</p>
-      <p v-else-if="!speechError" class="transcript-final muted">
+      <p v-else-if="!confirmedText && !interimText && !speechError" class="transcript-final muted">
         <template v-if="microphone === 'LISTENING'">请说“<strong>开始输入</strong>”</template>
         <template v-else>请开始说话</template>
       </p>
