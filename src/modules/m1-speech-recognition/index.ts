@@ -3,7 +3,7 @@ import type {
   TranscriptSegment, TranscriptUpdate, VoiceCommand,
 } from '../../contracts/m1-speech-recognition'
 import { captureAudio, type AudioInput } from './audio'
-import { commandRecognition, proxySocket, type CommandRecognition } from './browser'
+import { commandRecognition, observeOffline, proxySocket, type CommandRecognition } from './browser'
 import { audioFrame, commandOf, decodeIat, IatText, recordingText } from './protocol'
 
 type Timer = ReturnType<typeof setTimeout>
@@ -46,6 +46,7 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
   let recognition: CommandRecognition | undefined
   let recording: Recording | undefined
   let pending: { resolve: () => void; reject: (error: SpeechError) => void } | undefined
+  let unsubscribeOffline: (() => void) | undefined
   let emptyRestarts = 0
   let update: TranscriptUpdate = { confirmedText: '', interimText: '' }
   const timers = new Set<Timer>()
@@ -82,6 +83,10 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     if (timer !== undefined) { clearTimeout(timer); timers.delete(timer) }
   }
   function cancelAll(): void { for (const timer of timers) clearTimeout(timer); timers.clear() }
+  function detachNetwork(): void { unsubscribeOffline?.(); unsubscribeOffline = undefined }
+  function networkFailure(): void {
+    fail(speechError('RECOGNITION_FAILED', '网络已断开，语音监听已停止；已确认文本已保留，请联网后重新开始监听。'))
+  }
   function detachCommands(): void {
     const old = recognition; recognition = undefined
     if (old) {
@@ -137,12 +142,12 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     release(rec); cancelAll()
     publish(text)
     emit(completes, () => ({ text }))
-    if (rec.idle) { generation++; change('IDLE') }
+    if (rec.idle) { generation++; detachNetwork(); change('IDLE') }
     else { emptyRestarts = 0; startCommands(false) }
   }
   function fail(error: SpeechError): void {
     if (!pending && state === 'IDLE' && !recording && !recognition) return
-    generation++; detachCommands(); cancelAll()
+    generation++; detachCommands(); cancelAll(); detachNetwork()
     const request = pending; pending = undefined
     const rec = recording
     if (rec) {
@@ -347,19 +352,24 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
         return Promise.reject(speechError('RECOGNITION_FAILED', '当前状态不允许重复启动监听。'))
       }
       generation++; emptyRestarts = 0
-      return new Promise<void>((resolve, reject) => { pending = { resolve, reject }; startCommands(false) })
+      return new Promise<void>((resolve, reject) => {
+        pending = { resolve, reject }
+        unsubscribeOffline = observeOffline(networkFailure)
+        if (globalThis.navigator?.onLine === false) networkFailure()
+        else startCommands(false)
+      })
     },
     /** Cancel pending startup immediately, otherwise finish recording before entering IDLE. */
     stopListening() {
       guard()
       if (pending) {
         const request = pending; pending = undefined
-        generation++; detachCommands(); cancelAll()
+        generation++; detachCommands(); cancelAll(); detachNetwork()
         request.reject(speechError('RECOGNITION_FAILED', '语音监听启动已取消。'))
         change('IDLE'); return
       }
       if (recording) { stop(recording, true); return }
-      generation++; detachCommands(); cancelAll(); change('IDLE')
+      generation++; detachCommands(); cancelAll(); detachNetwork(); change('IDLE')
     },
     /** Begin a fresh user recording; startup failures are reported asynchronously through onError. */
     startRecording() {

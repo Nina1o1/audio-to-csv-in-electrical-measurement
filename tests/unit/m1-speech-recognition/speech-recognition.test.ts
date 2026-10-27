@@ -685,3 +685,93 @@ describe('natural utterance completion, command continuation and planned IAT rot
     expect(module.getState()).toBe('IDLE')
   })
 })
+
+describe('browser offline signal with an otherwise open localhost socket', () => {
+  let network: EventTarget
+  let online: { onLine: boolean }
+  let add: ReturnType<typeof vi.fn>
+  let remove: ReturnType<typeof vi.fn>
+  beforeEach(() => {
+    network = new EventTarget()
+    online = { onLine: true }
+    add = vi.fn(network.addEventListener.bind(network))
+    remove = vi.fn(network.removeEventListener.bind(network))
+    vi.stubGlobal('navigator', online)
+    vi.stubGlobal('addEventListener', add)
+    vi.stubGlobal('removeEventListener', remove)
+  })
+  function offline() { online.onLine = false; network.dispatchEvent(new Event('offline')) }
+
+  it('ends recording immediately, retains only confirmed text once, and permits explicit online recovery', async () => {
+    const complete = vi.fn(), errors = vi.fn()
+    module.onTranscriptComplete(complete); module.onError(errors)
+    await record()
+    const socket = currentSocket(), late = socket.onmessage!
+    frame(new Uint8Array(1280))
+    socket.result('接触电阻12，', 0)
+    socket.result('未确认耐压。', 2)
+    offline(); offline()
+    expect(module.getState()).toBe('IDLE')
+    expect(complete).toHaveBeenCalledExactlyOnceWith({ text: '接触电阻12，' })
+    expect(errors).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ code: 'RECOGNITION_FAILED', message: expect.stringContaining('网络已断开') }))
+    expect(audioStop).toHaveBeenCalledOnce(); expect(socket.close).toHaveBeenCalledOnce()
+    expect(signal.aborted).toBe(true); expect(vi.getTimerCount()).toBe(0)
+    expect(remove).toHaveBeenCalledOnce()
+    late({ data: JSON.stringify({ code: 0, data: { status: 2 } }) })
+    vi.advanceTimersByTime(60_000)
+    expect(complete).toHaveBeenCalledOnce(); expect(Commands.instances).toHaveLength(1)
+    online.onLine = true; network.dispatchEvent(new Event('online'))
+    expect(module.getState()).toBe('IDLE')
+    const retry = module.startListening(); currentCommand().ready(); await retry
+    expect(module.getState()).toBe('LISTENING')
+    expect(add).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects startup while already offline without acquiring a microphone or starting a command engine', async () => {
+    online.onLine = false
+    const errors = vi.fn(); module.onError(errors)
+    await expect(module.startListening()).rejects.toMatchObject({ code: 'RECOGNITION_FAILED' })
+    expect(errors).toHaveBeenCalledOnce(); expect(module.getState()).toBe('IDLE')
+    expect(Commands.instances).toHaveLength(0); expect(captureAudio).not.toHaveBeenCalled()
+    expect(remove).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('settles pending startup on offline and ignores its late native ready callback', async () => {
+    const errors = vi.fn(); module.onError(errors)
+    const startup = module.startListening(), old = currentCommand()
+    offline()
+    await expect(startup).rejects.toMatchObject({ code: 'RECOGNITION_FAILED' })
+    old.ready()
+    expect(module.getState()).toBe('IDLE'); expect(errors).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('stops command listening on offline without a completion or automatic retry', async () => {
+    const complete = vi.fn(), errors = vi.fn()
+    module.onTranscriptComplete(complete); module.onError(errors)
+    await listen(); offline(); vi.advanceTimersByTime(60_000)
+    expect(module.getState()).toBe('IDLE'); expect(complete).not.toHaveBeenCalled()
+    expect(errors).toHaveBeenCalledOnce(); expect(Commands.instances).toHaveLength(1)
+    expect(remove).toHaveBeenCalledOnce()
+  })
+
+  it('removes the listener on stop and does not let a stale offline callback stop a newer request', async () => {
+    const errors = vi.fn(); module.onError(errors)
+    await listen()
+    const stale = add.mock.calls[0]![1] as EventListener
+    module.stopListening(); module.stopListening()
+    expect(remove).toHaveBeenCalledOnce()
+    const retry = module.startListening()
+    stale(new Event('offline'))
+    currentCommand().ready(); await retry
+    expect(module.getState()).toBe('LISTENING'); expect(errors).not.toHaveBeenCalled()
+    module.stopListening(); offline()
+    expect(remove).toHaveBeenCalledTimes(2); expect(errors).not.toHaveBeenCalled()
+  })
+
+  it('removes the offline listener when stopListening finishes an active recording', async () => {
+    await record(); module.stopListening()
+    expect(module.getState()).toBe('IDLE'); expect(remove).toHaveBeenCalledOnce()
+    offline(); expect(vi.getTimerCount()).toBe(0)
+  })
+})

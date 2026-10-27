@@ -25,6 +25,18 @@ export function commandRecognition(): CommandRecognition {
   return recognition
 }
 
+/** A localhost proxy can remain connected even when its upstream network disappears. */
+export function observeOffline(callback: () => void): () => void {
+  if (typeof globalThis.addEventListener !== 'function') return () => undefined
+  let active = true
+  const offline = () => { if (active) callback() }
+  globalThis.addEventListener('offline', offline)
+  return () => {
+    active = false
+    globalThis.removeEventListener('offline', offline)
+  }
+}
+
 /** Only a same-origin proxy is allowed; browser configuration contains no vendor credentials. */
 export function proxySocket(path: string): WebSocket {
   const url = new URL(path, globalThis.location.href)

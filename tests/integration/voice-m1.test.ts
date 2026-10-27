@@ -39,11 +39,16 @@ let dispose: (() => void) | undefined
 afterEach(() => { dispose?.(); dispose = undefined; vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('real M1 → App → M2 → M3, with browser/audio boundaries replaced', () => {
-  it.each(['natural', 'voice-stop', 'interrupted'] as const)('merges exactly once on %s completion without nested mutations', async ending => {
+  it.each(['natural', 'voice-stop', 'interrupted', 'offline'] as const)('merges exactly once on %s completion without nested mutations', async ending => {
     vi.useFakeTimers(); Commands.instances = []; Socket.instances = []
     vi.stubGlobal('SpeechRecognition', Commands); vi.stubGlobal('WebSocket', Socket)
     vi.stubGlobal('location', { href: 'https://inspection.example/', origin: 'https://inspection.example' })
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() })
+    const network = new EventTarget()
+    vi.stubGlobal('navigator', { onLine: true })
+    vi.stubGlobal('addEventListener', network.addEventListener.bind(network))
+    const removeOffline = vi.fn(network.removeEventListener.bind(network))
+    vi.stubGlobal('removeEventListener', removeOffline)
     const stopAudio = vi.fn()
     let frame!: (data: Uint8Array) => void
     vi.mocked(captureAudio).mockImplementation(async (_abort, send, _fault, prepared) => {
@@ -63,14 +68,23 @@ describe('real M1 → App → M2 → M3, with browser/audio boundaries replaced'
       socket.result('结束输入。', 1, 1)
       await flush(); socket.result('', 2, 2)
     } else if (ending === 'natural') socket.result('', 1, 2)
+    else if (ending === 'offline') network.dispatchEvent(new Event('offline'))
     else socket.onerror?.()
-    if (ending !== 'interrupted') currentCommand().onstart?.()
+    const failed = ending === 'interrupted' || ending === 'offline'
+    if (!failed) currentCommand().onstart?.()
     await flush()
     expect(ui.draft).toMatchObject({ workOrder: 'MANUAL', contactResistance: 12 })
     expect(parse).toHaveBeenCalledOnce(); expect(report).not.toHaveBeenCalled()
     expect(stopAudio).toHaveBeenCalledOnce()
-    expect(ui.microphone).toBe(ending === 'interrupted' ? 'IDLE' : 'LISTENING')
-    if (ending === 'interrupted') expect(ui.speechError).toContain('中断')
+    expect(ui.microphone).toBe(failed ? 'IDLE' : 'LISTENING')
+    if (ending === 'offline') {
+      expect(ui.speechError).toContain('网络已断开')
+      expect(ui.editable).toBe(true)
+      ui.updateField('partNumber', 'AFTER-OFFLINE')
+      expect(ui.draft.partNumber).toBe('AFTER-OFFLINE')
+      expect(removeOffline).toHaveBeenCalledOnce()
+    }
+    else if (ending === 'interrupted') expect(ui.speechError).toContain('中断')
     else expect(ui.speechError).toBe('')
     ui.dispose(); expect(vi.getTimerCount()).toBe(0)
   })
