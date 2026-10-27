@@ -1,6 +1,6 @@
 # Vue 页面组件
 
-VoicePanel 展示真实 M1 状态、本次 confirmed／interim 文本、最终文本完成状态、监听／结束录入控件及独立语音代理访问入口；通过事件交给 App 处理。口令提交后立即清空，不保存在业务模块或 localStorage。
+VoicePanel 展示真实 M1 状态、本次 confirmed／interim 文本、最终文本完成状态、监听控件及独立语音代理访问入口；通过事件交给 App 处理。口令提交后立即清空，不保存在业务模块或 localStorage。
 
 DraftPanel 展示 M3 唯一草稿的六项字段并发出编辑、保存、删除事件，也复用于独立的历史编辑副本。HistoryPanel 展示查询、选择、历史管理和真实 CSV 导出入口。
 

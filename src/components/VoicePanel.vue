@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import type { MicrophoneState } from '../shared/data-models'
 defineProps<{ microphone: MicrophoneState; starting: boolean; processing: boolean; stopping: boolean; confirmedText: string; speechError: string; textComplete: boolean; authenticating: boolean; authMessage: string }>()
-const emit = defineEmits<{ listen: []; stop: []; login: [password: string]; logout: [] }>()
+const emit = defineEmits<{ listen: []; login: [password: string]; logout: [] }>()
 const password = ref('')
 function passwordInput(event: Event): void {
   if (event.target instanceof HTMLInputElement) password.value = event.target.value
@@ -47,8 +47,7 @@ function login(): void {
       <p v-if="confirmedText && microphone === 'LISTENING' && !speechError" class="transcript-final muted">请说“<strong>开始输入</strong>”继续输入</p>
     </div>
     <div class="panel-footer">
-      <p id="voice-note" class="muted">{{ microphone }} · {{ stopping ? '正在结束录入，请稍候' : '说“开始输入”后等待录入就绪再讲话；停顿后自动完成本段，也可说“结束输入”或点击结束录入。' }} 录入中不可切换监听；仅最终确认文本用于更新草稿。</p>
-      <button type="button" :disabled="microphone !== 'RECORDING' || stopping || textComplete" aria-describedby="voice-note" @click="emit('stop')">结束录入</button>
+      <p id="voice-note" class="muted">{{ microphone }} · {{ stopping ? '正在结束录入，请稍候' : '说“开始输入”后等待录入就绪再讲话；停顿后自动完成本段，也可说“结束输入”。' }} 录入中不可切换监听；仅最终确认文本用于更新草稿。</p>
     </div>
     <details>
       <summary>语音代理访问</summary>

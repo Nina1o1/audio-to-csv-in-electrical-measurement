@@ -52,7 +52,7 @@ describe('UI layout regression', () => {
     for (const text of ['Mock 测试工具', '执行模拟命令', '返回模拟解析结果', '模拟核对结果']) {
       expect(html).not.toContain(text)
     }
-    for (const text of ['结束录入', '导出选中记录至 CSV', '导出全部记录至 CSV']) {
+    for (const text of ['导出选中记录至 CSV', '导出全部记录至 CSV']) {
       const button = (html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []).find(value => value.includes(text))
       expect(button).toBeDefined()
       expect(button).toContain('disabled')
