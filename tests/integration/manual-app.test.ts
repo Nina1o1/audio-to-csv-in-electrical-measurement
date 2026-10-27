@@ -513,6 +513,7 @@ describe('Checkpoint A: actual App component bindings', () => {
 
   it('routes both actual CSV buttons through M4 and M5 to a downloadable Blob, independently of filters', async () => {
     vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 9, 28, 14, 30, 5))
     const time = '2026-10-26T01:30:00.000Z'
     const first: InspectionRecord = {
       id: 'r1', workOrder: 'ALPHA', partNumber: '\u0085=1', contactResistance: 0,
@@ -568,7 +569,7 @@ describe('Checkpoint A: actual App component bindings', () => {
     expect(new Uint8Array(await (createUrl.mock.calls[2]![0] as Blob).arrayBuffer()))
       .toEqual(new TextEncoder().encode(`${header}\r\n${firstRow}\r\n${secondRow}`))
     for (const link of links) {
-      expect(link.download).toBe('inspection-records.csv')
+      expect(link.download).toBe('工单信息2026-10-28_14-30-05.csv')
       expect(link.click).toHaveBeenCalledOnce()
     }
     vi.runAllTimers()

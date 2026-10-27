@@ -45,12 +45,12 @@ function confirm(ui: Ui) { fill(ui); ui.requestSave(); ui.confirmSave() }
 function csvFixture() {
   const exporter: CsvExporterModule = {
     generateCsv: vi.fn(),
-    export: vi.fn((records) => ({ filename: 'inspection-records.csv', recordCount: records.length })),
+    export: vi.fn((records, options) => ({ filename: options?.filename ?? 'inspection-records.csv', recordCount: records.length })),
   }
   return { exporter, download: vi.mocked(exporter.export) }
 }
 
-afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
 
 describe('App CSV export coordination', () => {
   function ready() {
@@ -65,6 +65,18 @@ describe('App CSV export coordination', () => {
     return { ...context, ...csv, ...storage, all: context.records.getAll() }
   }
 
+  it('names both export modes using the local time of each click, including zero padding and date rollover', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 9, 28, 4, 5, 6))
+    const { ui, all, download } = ready()
+    ui.exportRecords(true)
+    expect(download).toHaveBeenLastCalledWith(all, { filename: '工单信息2026-10-28_04-05-06.csv' })
+    vi.setSystemTime(new Date(2026, 9, 29, 0, 0, 1))
+    ui.select(all[0]!.id)
+    ui.exportRecords(false)
+    expect(download).toHaveBeenLastCalledWith([all[0]], { filename: '工单信息2026-10-29_00-00-01.csv' })
+  })
+
   it('exports all latest records regardless of a partial or empty query, without writing storage or changing the draft', () => {
     const { ui, records, all, download, storage } = ready()
     ui.updateField('workOrder', 'UNSAVED')
@@ -72,12 +84,12 @@ describe('App CSV export coordination', () => {
     ui.filters.workOrder = 'OTHER'; ui.query()
     expect(ui.rows).toHaveLength(1)
     ui.exportRecords(true)
-    expect(download).toHaveBeenLastCalledWith(all)
+    expect(download).toHaveBeenLastCalledWith(all, { filename: expect.stringMatching(/^工单信息\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.csv$/) })
     ui.filters.workOrder = 'missing'; ui.query()
     expect(ui.rows).toEqual([])
     expect(ui.canExport).toBe(true)
     ui.exportRecords(true)
-    expect(download).toHaveBeenLastCalledWith(all)
+    expect(download).toHaveBeenLastCalledWith(all, { filename: expect.stringMatching(/^工单信息\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.csv$/) })
     expect(ui.message).toBe('已发起下载，共 2 条记录。')
     expect(ui.filters.workOrder).toBe('missing')
     expect(ui.draft).toEqual(draft)
@@ -92,7 +104,7 @@ describe('App CSV export coordination', () => {
     records.update(id, { partNumber: 'LATEST' })
     ui.rows = ui.rows.map(record => ({ ...record, partNumber: 'STALE DISPLAY' }))
     ui.exportRecords(false)
-    expect(download).toHaveBeenCalledExactlyOnceWith([records.getById(id)])
+    expect(download).toHaveBeenCalledExactlyOnceWith([records.getById(id)], { filename: expect.stringMatching(/^工单信息\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.csv$/) })
     expect(ui.selectedIds).toEqual([id])
     expect(ui.message).toBe('已发起下载，共 1 条记录。')
   })
@@ -101,7 +113,7 @@ describe('App CSV export coordination', () => {
     const { ui, all, download } = ready()
     ui.selectedIds = [all[0]!.id, 'deleted-id']
     ui.exportRecords(false)
-    expect(download).toHaveBeenCalledExactlyOnceWith([all[0]])
+    expect(download).toHaveBeenCalledExactlyOnceWith([all[0]], { filename: expect.stringMatching(/^工单信息\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.csv$/) })
     expect(ui.selectedIds).toEqual([all[0]!.id])
     expect(ui.message).toContain('共 1 条记录')
     expect(ui.message).toContain('已清理 1 条失效选择')

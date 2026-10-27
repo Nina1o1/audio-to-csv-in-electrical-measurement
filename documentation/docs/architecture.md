@@ -98,7 +98,7 @@ M4 先构造并校验完整新集合，再序列化和写入；setItem 正常返
 
 M5 固定 8 列，不导出 ID；三个测量单元格分别为“数值 mΩ”“数值 MΩ”“数值 V”，不增加单位列。输入仍校验完整记录及唯一 ID，内部测量值保持 number。全量验证、CRLF、正确转义，默认 BOM。第一版优先公式防护，接受危险文本在导出时添加单引号；不修改原始记录，不承诺无损往返。
 
-文件名默认 inspection-records.csv。自定义名称须有非空名称和 .csv 扩展名（扩展名忽略大小写），不得含路径分隔符或 ASCII 控制字符；无效时抛 INVALID_FILENAME，不下载，不自动修正。完整接受条件见 [Public Interface 的文件名校验](public-interface.md#文件名校验)。
+App 为选中及全部导出传入“工单信息YYYY-MM-DD_HH-mm-ss.csv”，使用点击导出时设备本地时间，日期时间各段补零。M5 独立调用时的默认文件名仍为 inspection-records.csv。自定义名称须有非空名称和 .csv 扩展名（扩展名忽略大小写），不得含路径分隔符或 ASCII 控制字符；无效时抛 INVALID_FILENAME，不下载，不自动修正。完整接受条件见 [Public Interface 的文件名校验](public-interface.md#文件名校验)。
 
 只提示“已发起下载”，不声称已保存到磁盘。
 

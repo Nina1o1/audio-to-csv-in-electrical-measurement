@@ -439,8 +439,12 @@ export function useManualWorkflow(options: {
         return
       }
       try {
-        // M5 provides filename/BOM defaults and validates the entire batch before downloading.
-        const result = csvExporter.export(batch)
+        // Use the device-local export time, with separators safe for filenames.
+        const now = new Date()
+        const pad = (value: number) => String(value).padStart(2, '0')
+        const date = `${String(now.getFullYear()).padStart(4, '0')}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+        const time = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`
+        const result = csvExporter.export(batch, { filename: `工单信息${date}_${time}.csv` })
         message.value = `已发起下载，共 ${result.recordCount} 条记录。${selectionNotice}`
       } catch (error: unknown) {
         message.value = `CSV 导出失败：${csvErrorText(error)}${selectionNotice}`
