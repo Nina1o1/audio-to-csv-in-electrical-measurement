@@ -4,6 +4,7 @@ import type {
 } from '../../contracts/m1-speech-recognition'
 import { captureAudio, type AudioInput } from './audio'
 import { commandRecognition, observeOffline, proxySocket, type CommandRecognition } from './browser'
+import { checkMicrophoneEnvironment, checkMicrophonePermission, commandError, microphoneError, microphoneUnavailable } from './microphone'
 import { m1Diagnostic, type Diagnostic } from './debug'
 import { audioFrame, commandOf, decodeIat, IatText, recordingText } from './protocol'
 
@@ -36,12 +37,7 @@ function mapError(error: unknown, fallback = '语音识别失败。'): SpeechErr
       return { code, message: 'message' in error && typeof error.message === 'string' ? error.message : fallback }
     }
   }
-  const name = typeof error === 'object' && error !== null && 'name' in error ? error.name : ''
-  if (name === 'NotAllowedError' || name === 'SecurityError') return speechError('PERMISSION_DENIED', '麦克风权限被拒绝。')
-  if (name === 'NotFoundError' || name === 'NotReadableError' || name === 'OverconstrainedError') {
-    return speechError('MICROPHONE_UNAVAILABLE', '麦克风不可用。')
-  }
-  return speechError('RECOGNITION_FAILED', fallback)
+  return microphoneError(error)
 }
 
 /**
@@ -190,7 +186,7 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
     trace('command-listening-requested', { retry })
     let interimCount = 0
     let engine: CommandRecognition
-    try { engine = commandRecognition() } catch (error: unknown) { trace('command-listening-unavailable'); fail(mapError(error)); return }
+    try { checkMicrophoneEnvironment(); engine = commandRecognition() } catch (error: unknown) { trace('command-listening-unavailable'); fail(mapError(error)); return }
     recognition = engine
     let hadResult = false, started = false
     const consumed = new Map<number, string>()
@@ -237,10 +233,7 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
       trace('command-listening-error', { reason: ['no-speech', 'network', 'not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported', 'aborted'].includes(event.error) ? event.error : 'other' })
       // no-speech is a natural, empty recognition end, not a network retry.
       if (event.error === 'no-speech') return
-      const code = event.error === 'not-allowed' || event.error === 'service-not-allowed' ? 'PERMISSION_DENIED'
-        : event.error === 'audio-capture' ? 'MICROPHONE_UNAVAILABLE'
-          : event.error === 'language-not-supported' ? 'NOT_SUPPORTED' : 'RECOGNITION_FAILED'
-      fail(speechError(code, '语音命令监听失败。'))
+      fail(commandError(event.error))
     }
     engine.onend = () => {
       if (!live()) return
@@ -249,7 +242,13 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
       if (!started) return fail(speechError('RECOGNITION_FAILED', '语音监听未能启动。'))
       restart(() => { if (generation === token && state === 'LISTENING') startCommands(true) }, retry, hadResult)
     }
-    try { engine.start() } catch (error: unknown) { fail(mapError(error)) }
+    const start = () => {
+      if (!live()) return
+      try { engine.start() } catch (error: unknown) { fail(mapError(error)) }
+    }
+    const permission = checkMicrophonePermission()
+    if (permission) void permission.then(start, (error: unknown) => { if (live()) fail(mapError(error)) })
+    else start()
   }
 
   function live(rec: Recording): boolean { return recording === rec && !rec.done }
@@ -440,7 +439,7 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
         stopping: false, idle: false, done: false, stopCommand: false,
       }
       rec.trace('recording-requested')
-      recording = rec; change('RECORDING'); publish('')
+      recording = rec; publish('')
       const timeout = later(() => { if (live(rec) && !rec.audio) fail(speechError('RECOGNITION_FAILED', '音频采集启动超时。')) }, 10_000)
       void captureAudio(rec.abort.signal, frame => {
         if (!live(rec) || rec.stopCommand || (rec.stopping && rec.active?.ended)) return
@@ -448,8 +447,9 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
         rec.queue.push(frame); rec.queuedBytes += frame.length
         if (rec.queuedBytes > 96_000) return fail(speechError('RECOGNITION_FAILED', '音频缓冲已满，已停止录入。'))
         pump(rec)
-      }, () => { if (live(rec)) fail(speechError('MICROPHONE_UNAVAILABLE', '音频采集中断。')) }, start => {
+      }, () => { if (live(rec)) fail({ ...microphoneUnavailable }) }, start => {
         if (!live(rec) || rec.stopping) return
+        change('RECORDING')
         rec.startAudio = start
         rec.trace('audio-prepared')
         connect(rec, true)

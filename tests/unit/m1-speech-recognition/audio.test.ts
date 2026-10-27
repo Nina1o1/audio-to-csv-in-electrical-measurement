@@ -89,6 +89,35 @@ describe('browser audio ownership', () => {
     await expect(captureAudio(new AbortController().signal, vi.fn(), vi.fn())).rejects.toMatchObject({ code: 'NOT_SUPPORTED' })
     expect(getUserMedia).not.toHaveBeenCalled()
   })
+  it.each([
+    ['NotAllowedError', 'PERMISSION_DENIED', '浏览器的网站设置'],
+    ['NotFoundError', 'MICROPHONE_UNAVAILABLE', '未检测到可用麦克风，请检查设备连接后重试。'],
+    ['NotReadableError', 'MICROPHONE_UNAVAILABLE', '关闭可能占用麦克风的应用'],
+    ['SecurityError', 'MICROPHONE_UNAVAILABLE', '安全策略限制'],
+    ['AbortError', 'MICROPHONE_UNAVAILABLE', '操作系统麦克风隐私权限'],
+    ['OverconstrainedError', 'MICROPHONE_UNAVAILABLE', '设备设置'],
+  ])('classifies %s and releases the context before retry', async (name, code, message) => {
+    getUserMedia.mockRejectedValueOnce({ name })
+    await expect(captureAudio(new AbortController().signal, vi.fn(), vi.fn())).rejects.toMatchObject({ code, message: expect.stringContaining(message!) })
+    expect(Context.instances[0]!.close).toHaveBeenCalledOnce()
+    const audio = await captureAudio(new AbortController().signal, vi.fn(), vi.fn())
+    audio.stop(); expect(track.stop).toHaveBeenCalledOnce()
+  })
+  it('rejects insecure contexts before requesting audio', async () => {
+    vi.stubGlobal('isSecureContext', false)
+    await expect(captureAudio(new AbortController().signal, vi.fn(), vi.fn())).rejects.toMatchObject({ code: 'NOT_SUPPORTED', message: expect.stringContaining('HTTPS') })
+    expect(getUserMedia).not.toHaveBeenCalled(); expect(Context.instances).toHaveLength(0)
+  })
+  it('rejects website policy restrictions before requesting audio', async () => {
+    vi.stubGlobal('document', { permissionsPolicy: { allowsFeature: () => false } })
+    await expect(captureAudio(new AbortController().signal, vi.fn(), vi.fn())).rejects.toMatchObject({ code: 'MICROPHONE_UNAVAILABLE', message: expect.stringContaining('管理员') })
+    expect(getUserMedia).not.toHaveBeenCalled()
+  })
+  it('releases an unusable stream with no audio tracks', async () => {
+    getUserMedia.mockResolvedValueOnce({ getTracks: () => [track], getAudioTracks: () => [] })
+    await expect(captureAudio(new AbortController().signal, vi.fn(), vi.fn())).rejects.toMatchObject({ code: 'MICROPHONE_UNAVAILABLE', message: expect.stringContaining('未检测到可用麦克风') })
+    expect(track.stop).toHaveBeenCalledOnce(); expect(Context.instances[0]!.close).toHaveBeenCalledOnce()
+  })
   it('prepares audio in the user gesture but connects the graph only when transport is ready', async () => {
     let start!: () => void
     const audio = await captureAudio(new AbortController().signal, vi.fn(), vi.fn(), value => { start = value })
@@ -121,7 +150,7 @@ describe('browser audio ownership', () => {
   })
   it('releases the context when getUserMedia rejects', async () => {
     getUserMedia.mockRejectedValueOnce({ name: 'NotAllowedError' })
-    await expect(captureAudio(new AbortController().signal, vi.fn(), vi.fn())).rejects.toMatchObject({ name: 'NotAllowedError' })
+    await expect(captureAudio(new AbortController().signal, vi.fn(), vi.fn())).rejects.toMatchObject({ code: 'PERMISSION_DENIED' })
     expect(Context.instances[0]!.close).toHaveBeenCalledTimes(1)
   })
   it('cleans up a failed worklet load', async () => {

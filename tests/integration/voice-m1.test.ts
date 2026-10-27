@@ -44,6 +44,7 @@ afterEach(() => { dispose?.(); dispose = undefined; vi.clearAllTimers(); vi.useR
 describe('real M1 → App → M2 → M3 → App → M4, with browser/audio boundaries replaced', () => {
   it('recovers explicitly through proxy login after a failed handshake, ignoring duplicate commands and old callbacks', async () => {
     vi.useFakeTimers(); Commands.instances = []; Socket.instances = []
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } })
     vi.stubGlobal('SpeechRecognition', Commands); vi.stubGlobal('WebSocket', Socket)
     vi.stubGlobal('location', { href: 'https://inspection.example/', origin: 'https://inspection.example' })
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() })
@@ -93,12 +94,13 @@ describe('real M1 → App → M2 → M3 → App → M4, with browser/audio bound
   })
   it.each(['natural', 'voice-stop', 'interrupted', 'offline'] as const)('preserves data contracts and save ordering after %s completion', async ending => {
     vi.useFakeTimers(); Commands.instances = []; Socket.instances = []
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } })
     vi.stubGlobal('SpeechRecognition', Commands); vi.stubGlobal('WebSocket', Socket)
     vi.stubGlobal('location', { href: 'https://inspection.example/', origin: 'https://inspection.example' })
     const storage = { getItem: () => null, setItem: vi.fn<(key: string, value: string) => void>() }
     vi.stubGlobal('localStorage', storage)
     const network = new EventTarget()
-    vi.stubGlobal('navigator', { onLine: true })
+    vi.stubGlobal('navigator', { onLine: true, mediaDevices: { getUserMedia: vi.fn() } })
     vi.stubGlobal('addEventListener', network.addEventListener.bind(network))
     const removeOffline = vi.fn(network.removeEventListener.bind(network))
     vi.stubGlobal('removeEventListener', removeOffline)

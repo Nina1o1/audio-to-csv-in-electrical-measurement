@@ -35,6 +35,7 @@
 
 - `index.ts`：唯一公开状态、启动结算、续接、轮换、收尾、事件与订阅生命周期。
 - `browser.ts`：原生 Web Speech 构造和同源代理 WebSocket。
+- `microphone.ts`：安全上下文、采集 API、网站策略与已禁止权限预检；集中区分权限、设备和浏览器语音服务错误。
 - `audio.ts`：AudioWorklet、低通滤波、持续重采样、16kHz/16bit/单声道小端PCM、40ms帧。
 - `protocol.ts`：严格JSON校验、序号与替换归并、独立短句命令边界、音频消息。
 - `../../../infrastructure/m1-speech-proxy/`：最小访问控制和IAT安全代理部署示例。
@@ -105,3 +106,23 @@ Checkpoint B 已由 App 协调层接入 M1、M2 与唯一 M3 草稿；代理仍�
 尚需部署后验收。普通互联网不保证浏览器语音服务可达；失败应保留手动功能。
 
 官方协议：https://www.xfyun.cn/doc/asr/voicedictation/API.html
+
+## 麦克风异常处理
+
+命令监听仍由 Web Speech API 申请和持有麦克风，不额外打开 getUserMedia 流。
+每次启动（含命令引擎恢复）检查安全上下文、getUserMedia API 与可查询的网站策略；
+Permissions API 支持 microphone 查询时，denied 直接失败，不调用原生 start。
+API 不支持/查询抛错时回退原生识别错误；权限查询也受原有 10 秒启动超时和取消代次保护。
+无自动权限重试或永久拒绝缓存，用户修改权限后点击“重试监听”重新查询。
+
+NotAllowedError / not-allowed 提示网站设置及系统隐私权限，不声称可唯一判断拒绝来源。
+SecurityError、NotReadableError、AbortError、OverconstrainedError 为设备或访问限制；
+NotFoundError 明确提示未检测到麦克风。Web Speech audio-capture 无细分设备原因，
+提示检查连接、系统权限和占用。service-not-allowed 属浏览器语音服务限制，
+network 属浏览器语音服务连接错误；讯飞代理仍使用既有连接故障路径。
+
+公开方法、错误码和 M1→M2→M3 数据流不变；唯一状态时序调整是
+startRecording 在采集准备成功后才发 RECORDING，避免权限失败时出现虚假录音状态。
+准备期间内部 recording 上下文防止重复启动，停止和退出仍可清理；失败完成事件仍至多一次，
+onError 为 App 唯一故障来源，Promise catch 不再提示。
+真实浏览器验收清单见 `documentation/docs/microphone-error-acceptance.md`。

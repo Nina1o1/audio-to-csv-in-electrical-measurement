@@ -36,7 +36,7 @@ type DraftFields = {
 | 接口/事件 | 修订后的行为 |
 |---|---|
 | startListening | 仅 IDLE 可启动；浏览器确认启动后才进入 LISTENING 并 resolve。启动失败回到 IDLE，以原 SpeechError reject，并通过 onError 报告一次。启动未完成时的取消及重复请求见下方约定。 |
-| startRecording | 仅 LISTENING 生效，进入 RECORDING 并清空本次缓冲；非法状态不修改数据。 |
+| startRecording | 仅 LISTENING 生效，清空本次缓冲；麦克风采集准备成功后才进入 RECORDING。准备期间不重复启动，权限或设备失败回到 IDLE；非法状态不修改数据。 |
 | stopRecording | 只处理当前录入，输出已确认文本，最多产生一次完成事件；重复停止不重复通知。正常目标状态为 LISTENING。 |
 | stopListening | 任意状态可请求停止。录入中先结束并输出已确认文本，再进入 IDLE；IDLE 无操作。启动尚未完成时也要记住停止意图，迟到的启动结果不能重新开启监听。 |
 | onTranscriptUpdate | 只用于展示本次完整实时快照；不能把每次更新追加成历史或直接写草稿。 |

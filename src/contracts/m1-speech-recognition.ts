@@ -11,7 +11,7 @@ export interface SpeechRecognitionModule {
   startListening(): Promise<void>
   /** Cancel startup, or finish the current recording and release all listening resources. */
   stopListening(): void
-  /** Start a fresh recording only from LISTENING. */
+  /** Start a fresh recording only from LISTENING; enter RECORDING once microphone preparation succeeds. */
   startRecording(): void
   /** Stop audio and drain final results; repeated stops do not duplicate completion. */
   stopRecording(): void

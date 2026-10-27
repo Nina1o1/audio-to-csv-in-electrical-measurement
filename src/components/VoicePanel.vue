@@ -18,9 +18,10 @@ function login(): void {
     <h2 id="keywords-title">语音关键词提示</h2>
     <div class="keywords-content">
       <div class="actions">
-        <button type="button" :disabled="authenticating || microphone === 'RECORDING'" aria-describedby="voice-note" @click="emit('listen')">{{ starting ? '取消启动' : microphone === 'IDLE' ? '开始监听' : '停止监听' }}</button>
+        <button type="button" :disabled="authenticating || microphone === 'RECORDING'" :aria-describedby="speechError ? 'microphone-error voice-note' : 'voice-note'" @click="emit('listen')">{{ starting ? '取消启动' : microphone === 'IDLE' ? (speechError ? '重试监听' : '开始监听') : '停止监听' }}</button>
         <span class="status" :class="{ 'status-idle': microphone === 'IDLE' }" role="status">{{ microphone === 'IDLE' ? '未在监听' : '监听中' }}</span>
       </div>
+      <p v-if="speechError" id="microphone-error" role="alert" class="microphone-error">{{ speechError }}</p>
       <dl class="keywords">
         <div><dt>录入</dt><dd><strong>开始输入</strong> 开始记录语音 <span>／</span> <strong>结束输入</strong> 结束记录语音</dd></div>
         <div><dt>删除</dt><dd><strong>删除</strong> 请求删除草稿 <span>／</span> <strong>保留</strong> 保留草稿 <span>／</span> <strong>确认删除</strong> 删除草稿</dd></div>

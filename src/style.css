@@ -41,6 +41,7 @@ button.danger:disabled { color: #945347; border-color: #c7aaa3; background: #fff
 .keywords-panel h2 { margin-bottom: 7px; }
 .keywords-content { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 26px; }
 .keywords-content > .actions { flex-shrink: 0; }
+.microphone-error { flex-basis: 100%; order: 1; color: #945347; font-size: var(--font-size-sm); line-height: 1.6; }
 .keywords { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 26px; font-size: var(--font-size-sm); }
 .keywords > div:first-child { grid-column: 1 / -1; }
 .keywords-content > .keywords { flex: 1; min-width: 0; }

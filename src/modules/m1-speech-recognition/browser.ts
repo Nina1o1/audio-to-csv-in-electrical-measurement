@@ -17,7 +17,7 @@ export function commandRecognition(): CommandRecognition {
     webkitSpeechRecognition?: new () => CommandRecognition
   }
   const Constructor = browser.SpeechRecognition ?? browser.webkitSpeechRecognition
-  if (!Constructor) throw { code: 'NOT_SUPPORTED', message: '当前浏览器不支持语音命令监听。' }
+  if (!Constructor) throw { code: 'NOT_SUPPORTED', message: '当前浏览器不支持语音命令监听，请使用支持 Web Speech API 的浏览器后重试。' }
   const recognition = new Constructor()
   recognition.lang = 'zh-CN'
   recognition.continuous = true

@@ -58,6 +58,7 @@ const cleanup: (() => void)[] = []
 
 function setup() {
   vi.useFakeTimers(); Commands.instances = []; Socket.instances = []
+  vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } })
   vi.stubGlobal('SpeechRecognition', Commands); vi.stubGlobal('WebSocket', Socket)
   vi.stubGlobal('location', { href: 'https://inspection.example/', origin: 'https://inspection.example' })
   let contents: string | null = null

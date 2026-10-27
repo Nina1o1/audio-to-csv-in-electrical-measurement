@@ -1,3 +1,4 @@
+import { checkMicrophoneEnvironment, microphoneError } from './microphone'
 import type { Diagnostic } from './debug'
 
 /** Streaming area resampling keeps fractional input positions across worklet messages. */
@@ -68,8 +69,9 @@ export async function captureAudio(
   onPrepared?: (start: () => void) => void,
   trace: Diagnostic = () => undefined,
 ): Promise<AudioInput> {
+  checkMicrophoneEnvironment()
   if (!globalThis.navigator?.mediaDevices?.getUserMedia || !globalThis.AudioContext || !globalThis.AudioWorkletNode) {
-    throw { code: 'NOT_SUPPORTED', message: '当前浏览器不支持音频采集。' }
+    throw { code: 'NOT_SUPPORTED', message: '当前浏览器不支持所需的音频采集 API，请使用支持 AudioWorklet 的浏览器后重试。' }
   }
   let stream: MediaStream | undefined
   let context: AudioContext | undefined
@@ -99,11 +101,14 @@ export async function captureAudio(
     context = new AudioContext()
     await context.resume()
     check()
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false })
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false })
+    } catch (error: unknown) { throw microphoneError(error) }
     if (stopped || signal.aborted) {
       for (const track of stream.getTracks()) track.stop()
       throw new Error('Audio capture cancelled.')
     }
+    if (!stream.getAudioTracks().some(track => track.readyState !== 'ended')) throw microphoneError({ name: 'NotFoundError' })
     const settings = stream.getAudioTracks()[0]?.getSettings?.()
     trace('microphone-ready', { sampleRate: context.sampleRate, trackSampleRate: settings?.sampleRate, channels: settings?.channelCount, echoCancellation: settings?.echoCancellation, noiseSuppression: settings?.noiseSuppression, contextState: context.state })
     packer = new PcmFrames(context.sampleRate, onFrame)

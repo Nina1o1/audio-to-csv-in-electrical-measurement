@@ -54,6 +54,7 @@ function finishSocket() { currentSocket().end(); currentCommand().ready() }
 beforeEach(() => {
   vi.useFakeTimers()
   Commands.instances = []; Socket.instances = []
+  vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } })
   vi.stubGlobal('SpeechRecognition', Commands)
   vi.stubGlobal('WebSocket', Socket)
   vi.stubGlobal('location', { href: 'https://inspection.example/', origin: 'https://inspection.example' })
@@ -88,6 +89,66 @@ describe('M1 public lifecycle', () => {
     expect(coerce).not.toHaveBeenCalled()
     expect(errors).toHaveBeenCalledExactlyOnceWith({ code: 'RECOGNITION_FAILED', message: expect.any(String) })
     expect(module.getState()).toBe('IDLE')
+  })
+  it('does not enter active states or reconnect after first permission refusal', async () => {
+    const errors = vi.fn(), states = vi.fn()
+    module.onError(errors); module.onStateChange(states)
+    const request = module.startListening(), old = currentCommand(), end = old.onend!, fault = old.onerror!
+    fault({ error: 'not-allowed' }); end(); fault({ error: 'not-allowed' })
+    await expect(request).rejects.toMatchObject({ code: 'PERMISSION_DENIED', message: expect.stringContaining('浏览器的网站设置') })
+    vi.advanceTimersByTime(60_000)
+    expect(errors).toHaveBeenCalledOnce(); expect(states).not.toHaveBeenCalled()
+    expect(module.getState()).toBe('IDLE'); expect(old.abort).toHaveBeenCalledOnce()
+    expect(captureAudio).not.toHaveBeenCalled(); expect(Socket.instances).toHaveLength(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+  it('skips native requests while permission is denied, then rechecks and recovers after authorization', async () => {
+    const query = vi.fn().mockResolvedValue({ state: 'denied' })
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() }, permissions: { query } })
+    const errors = vi.fn(); module.onError(errors)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await expect(module.startListening()).rejects.toMatchObject({ code: 'PERMISSION_DENIED' })
+      expect(currentCommand().start).not.toHaveBeenCalled()
+      expect(module.getState()).toBe('IDLE')
+    }
+    vi.advanceTimersByTime(60_000); expect(query).toHaveBeenCalledTimes(2)
+    query.mockResolvedValue({ state: 'granted' })
+    const retry = module.startListening()
+    await Promise.resolve(); await Promise.resolve()
+    expect(currentCommand().start).toHaveBeenCalledOnce()
+    currentCommand().ready(); await retry
+    module.startRecording(); await Promise.resolve(); currentSocket().open()
+    frame(new Uint8Array(1280)); currentSocket().result('恢复录入。')
+    module.stopRecording(); finishSocket()
+    expect(module.getState()).toBe('LISTENING'); expect(errors).toHaveBeenCalledTimes(2)
+    module.stopListening(); expect(module.getState()).toBe('IDLE')
+  })
+  it.each(['cancel', 'timeout'] as const)('ignores a late permission query after %s', async kind => {
+    let grant!: (status: { state: string }) => void
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() }, permissions: { query: () => new Promise(resolve => { grant = resolve }) } })
+    const errors = vi.fn(); module.onError(errors)
+    const request = module.startListening(), engine = currentCommand()
+    if (kind === 'cancel') module.stopListening()
+    else vi.advanceTimersByTime(10_000)
+    await expect(request).rejects.toMatchObject({ code: 'RECOGNITION_FAILED' })
+    grant({ state: 'granted' }); await Promise.resolve(); await Promise.resolve()
+    expect(engine.start).not.toHaveBeenCalled(); expect(module.getState()).toBe('IDLE')
+    expect(errors).toHaveBeenCalledTimes(kind === 'cancel' ? 0 : 1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+  it.each(['SecurityError', 'NotReadableError', 'NotFoundError', 'AbortError'])('never enters RECORDING when audio preparation rejects with %s', async name => {
+    const states = vi.fn(), errors = vi.fn()
+    await listen(); module.onStateChange(states); module.onError(errors)
+    vi.mocked(captureAudio).mockRejectedValueOnce({ name })
+    module.startRecording(); await Promise.resolve(); await Promise.resolve()
+    expect(states.mock.calls).toEqual([['IDLE']])
+    expect(errors).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ code: 'MICROPHONE_UNAVAILABLE' }))
+    expect(Socket.instances).toHaveLength(0)
+  })
+  it.each(['service-not-allowed', 'network'])('does not classify browser service error %s as microphone permission denial', async error => {
+    const request = module.startListening()
+    currentCommand().onerror?.({ error })
+    await expect(request).rejects.toMatchObject({ code: 'RECOGNITION_FAILED', message: expect.stringContaining('浏览器') })
   })
   it('exposes exactly the documented module methods', () => {
     expect(Object.keys(module).sort()).toEqual(['startListening', 'stopListening', 'startRecording', 'stopRecording', 'getState', 'onStateChange', 'onCommand', 'onTranscriptUpdate', 'onTranscriptComplete', 'onError'].sort())
@@ -812,7 +873,7 @@ describe('browser offline signal with an otherwise open localhost socket', () =>
     online = { onLine: true }
     add = vi.fn(network.addEventListener.bind(network))
     remove = vi.fn(network.removeEventListener.bind(network))
-    vi.stubGlobal('navigator', online)
+    vi.stubGlobal('navigator', { ...online, mediaDevices: { getUserMedia: vi.fn() }, get onLine() { return online.onLine } })
     vi.stubGlobal('addEventListener', add)
     vi.stubGlobal('removeEventListener', remove)
   })

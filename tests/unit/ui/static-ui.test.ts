@@ -2,6 +2,7 @@ import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { describe, expect, it } from 'vitest'
 import App from '../../../src/App.vue'
+import VoicePanel from '../../../src/components/VoicePanel.vue'
 import DraftPanel from '../../../src/components/DraftPanel.vue'
 import type { DraftFields } from '../../../src/shared/data-models'
 
@@ -19,6 +20,19 @@ describe('UI layout regression', () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b))
     expect(html).toContain('导出选中记录至 CSV')
     expect(html).toContain('导出全部记录至 CSV')
+  })
+
+  it('shows actionable microphone errors beside status with retry, and hides them during normal listening', async () => {
+    const props = { microphone: 'IDLE' as const, starting: false, processing: false, stopping: false,
+      confirmedText: '', speechError: '麦克风权限未开启，请在浏览器的网站设置中允许使用麦克风，然后重试。',
+      textComplete: false, authenticating: false, authMessage: '', canStartInput: false, canStopInput: false }
+    const html = await renderToString(createSSRApp(VoicePanel, props))
+    expect(html).toContain('id="microphone-error" role="alert"')
+    expect(html).toContain(props.speechError); expect(html).toContain('重试监听')
+    expect(html.indexOf('id="microphone-error"')).toBeLessThan(html.indexOf('id="voice-title"'))
+    const normal = await renderToString(createSSRApp(VoicePanel, { ...props, microphone: 'LISTENING', speechError: '' }))
+    expect(normal).not.toContain('id="microphone-error"'); expect(normal).not.toContain('重试监听')
+    expect(normal).toContain('开始输入'); expect(normal).toContain('结束输入')
   })
 
   it('renders six empty fields and fixed unit text without defaulting to zero or PASS', async () => {
