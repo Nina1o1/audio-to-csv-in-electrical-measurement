@@ -55,8 +55,12 @@ describe('M2 Stage A: fields, values and correction scope', () => {
     expect(parse(`耐压${connector}500`)).toEqual({})
   })
 
-  it.each(['PASS', 'pass', 'PaSs', '合格', '通过'])('maps complete PASS word %s', value => {
+  // 2026-10-29: 通过 is a process description, removed from the approved result vocabulary.
+  it.each(['PASS', 'pass', 'PaSs', '合格'])('maps complete PASS word %s', value => {
     expect(parse(`结果${value}`)).toEqual({ result: 'PASS' })
+  })
+  it('does not map 通过 even with an explicit result field', () => {
+    expect(parse('结果通过')).toStrictEqual({})
   })
   it.each(['FAIL', 'fail', 'FaIl', '不合格', '不通过'])('maps complete FAIL word %s', value => {
     expect(parse(`检验结果${value}`)).toEqual({ result: 'FAIL' })

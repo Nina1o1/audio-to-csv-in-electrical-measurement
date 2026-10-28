@@ -98,8 +98,8 @@ export const EDGE_CASES: ContractCase[] = [
   contract('X26', '接触电阻NaN，绝缘电阻Infinity，耐压负三', {}),
   // Promoted from PENDING_EDGES after the confirmed correction boundary was documented.
   contract('S02', '接触电阻12毫欧，今天已检查，不对，是15毫欧', { contactResistance: 12 }),
+  // Adjacent explicit fields are now an approved boundary, even without punctuation.
+  contract('S01', '接触电阻12耐压500绝缘电阻20', { contactResistance: 12, withstandVoltage: 500, insulationResistance: 20 }),
 ]
 
-export const PENDING_EDGES: PendingCase[] = [
-  pending('S01', '接触电阻12耐压500绝缘电阻20', '字段之间无标点时如何确定边界', '已有实现与旧测试支持；Public Interface 未明确相邻字段无分隔的切分规则，单列待同步。'),
-]
+export const PENDING_EDGES: PendingCase[] = []

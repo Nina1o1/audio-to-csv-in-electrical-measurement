@@ -4,11 +4,14 @@ import { parseChineseNumber } from './chinese-number'
 
 type Field = keyof ParseResult
 type MeasurementField = 'contactResistance' | 'insulationResistance' | 'withstandVoltage'
+type ParserEvent = { name: string; index: number; field?: Field }
 
 const FIELD_ALIASES: Readonly<Record<string, Field>> = {
   工单号: 'workOrder', 工单: 'workOrder', 零件号: 'partNumber', 零件编号: 'partNumber', 料号: 'partNumber',
+  // Consume only approved field-name stutters; never deduplicate identifier characters.
+  工工单: 'workOrder', 工工工单: 'workOrder', 工单单: 'workOrder', 料料号: 'partNumber', 料号号: 'partNumber',
   接触电阻: 'contactResistance', 绝缘电阻: 'insulationResistance',
-  耐压值: 'withstandVoltage', 耐压: 'withstandVoltage', 耐电压: 'withstandVoltage', 检验结果: 'result', 结果: 'result',
+  耐压值: 'withstandVoltage', 耐压: 'withstandVoltage', 耐电压: 'withstandVoltage', 检验结果: 'result', 检测结果: 'result', 结果: 'result',
 }
 
 const UNIT_FACTORS: Record<MeasurementField, Readonly<Record<string, number>>> = {
@@ -19,9 +22,15 @@ const UNIT_FACTORS: Record<MeasurementField, Readonly<Record<string, number>>> =
 const UNIT_WORDS = [...new Set(Object.values(UNIT_FACTORS).flatMap(units => Object.keys(units)))]
   .sort((a, b) => b.length - a.length)
 const RESULT_WORDS: Readonly<Record<string, 'PASS' | 'FAIL'>> = {
-  PASS: 'PASS', 合格: 'PASS', 通过: 'PASS', FAIL: 'FAIL', 不合格: 'FAIL', 不通过: 'FAIL',
+  PASS: 'PASS', 合格: 'PASS', FAIL: 'FAIL', 不合格: 'FAIL', 不通过: 'FAIL',
 }
 const RESULT_NAMES = Object.keys(RESULT_WORDS).sort((a, b) => b.length - a.length)
+// A process description can preserve a voltage without stating the final result.
+const VOLTAGE_SUFFIXES = [...RESULT_NAMES, '通过'].sort((a, b) => b.length - a.length)
+
+function withoutConnector(text: string): string {
+  return text.replace(/^(?:\s*(?:改成|改为|是|为|：|:))?\s*/, '')
+}
 
 function foldResult(text: string): string {
   // Unicode ſ/ß must not expand the fixed ASCII PASS/FAIL vocabulary.
@@ -37,13 +46,13 @@ function isMeasurement(field: Field): field is MeasurementField {
   return field === 'contactResistance' || field === 'insulationResistance' || field === 'withstandVoltage'
 }
 
-function expressionPart(text: string): { expression: string; adjacent: boolean } {
+function expressionPart(text: string, measurement = true): { expression: string; adjacent: boolean } {
   // A line break is whitespace inside a candidate, not proof that its unit is absent.
   // Preserve it so split numbers/ranges fail whole-expression validation instead of joining.
   for (const match of text.matchAll(/[,，;；。!?！？]/g)) {
     const index = match.index
     // Keep numeric separators inside the candidate so 1,000 cannot become 1.
-    if (/[,，]/.test(match[0]) && /[0-9]/.test(text[index - 1] ?? '') && /[0-9]/.test(text[index + 1] ?? '')) continue
+    if (measurement && /[,，]/.test(match[0]) && /[0-9]/.test(text[index - 1] ?? '') && /[0-9]/.test(text[index + 1] ?? '')) continue
     return {
       expression: text.slice(0, index).trim(),
       adjacent: /^[\s,，;；。!?！？]*$/.test(text.slice(index)),
@@ -52,12 +61,31 @@ function expressionPart(text: string): { expression: string; adjacent: boolean }
   return { expression: text.trim(), adjacent: true }
 }
 
+function withPartAliases(text: string, events: ParserEvent[]): ParserEvent[] {
+  return events.flatMap((event, index) => {
+    if (event.field !== 'workOrder') return [event]
+    const start = event.index + event.name.length
+    const raw = text.slice(start, events[index + 1]?.index)
+    // Inspect only the next work-order candidate. Never replace ordinary 6号 globally.
+    const aliases = [...raw.matchAll(/6号|六号/g)].filter(alias => {
+      const prefix = withoutConnector(raw.slice(0, alias.index))
+      if (!/^[A-Za-z0-9_-]+[\s,，;；。!?！？]*$/.test(prefix)) return false
+      const suffix = withoutConnector(raw.slice(alias.index + alias[0].length))
+      return /^[A-Za-z][A-Za-z0-9_-]*$/.test(expressionPart(suffix, false).expression)
+    })
+    // Ambiguous or incomplete candidates do not establish a field boundary.
+    if (aliases.length !== 1) return [event]
+    const alias = aliases[0]!
+    return [event, { name: alias[0], index: start + alias.index, field: 'partNumber' as const }]
+  })
+}
+
 function measurementCandidate(text: string, field: MeasurementField): { value?: number; identifiable: boolean; result?: InspectionResult } {
   const factors = UNIT_FACTORS[field]
   let statedResult: InspectionResult | undefined
   if (field === 'withstandVoltage') {
     // Only a complete voltage + supported unit may carry an attached result word.
-    const word = RESULT_NAMES.find(name => foldResult(text).endsWith(name)
+    const word = VOLTAGE_SUFFIXES.find(name => foldResult(text).endsWith(name)
       && Object.keys(factors).some(unit => text.slice(0, -name.length).trimEnd().endsWith(unit)))
     if (word) {
       statedResult = RESULT_WORDS[word]
@@ -98,29 +126,31 @@ export function createTextParser(): TextParserModule {
       // Longest aliases win at the same position, preventing 耐压 from consuming 耐压值.
       const names = Object.keys(FIELD_ALIASES).sort((a, b) => b.length - a.length)
       const resultClause = `(?:^|(?<=[,，;；。!?！？]))\\s*(?:(?:改成|改为)\\s*)?(?:${RESULT_NAMES.join('|')})\\s*(?=$|[,，;；。!?！？])`
-      const events = [...text.matchAll(new RegExp(`${names.join('|')}|[,，]\\s*不对\\s*[,，]\\s*是|${resultClause}`, 'gi'))]
+      const events = withPartAliases(text, [...text.matchAll(new RegExp(`${names.join('|')}|[,，]\\s*不对\\s*[,，]\\s*是|${resultClause}`, 'gi'))]
+        .map(event => ({ name: event[0], index: event.index, field: FIELD_ALIASES[event[0]] })))
       let correctionTarget: MeasurementField | undefined
       let recordSeen = false
       let allowBareResult = false
       let allowResultCorrection = false
       for (let index = 0; index < events.length; index++) {
         const event = events[index]!
-        const field = FIELD_ALIASES[event[0]]
-        const correction = field === undefined && /^[,，]/.test(event[0])
+        const field = event.field
+        const correction = field === undefined && /^[,，]/.test(event.name)
         const target = field ?? correctionTarget
         correctionTarget = undefined
         const previousBareResult = allowBareResult
         const previousResultCorrection = allowResultCorrection
         allowBareResult = false
         allowResultCorrection = false
-        const raw = text.slice(event.index + event[0].length, events[index + 1]?.index)
+        const raw = text.slice(event.index + event.name.length, events[index + 1]?.index)
         if (!field && !correction) {
-          const clause = event[0].trim()
+          const clause = event.name.trim()
           const modifying = /^(?:改成|改为)/.test(clause)
           const value = RESULT_WORDS[foldResult(clause.replace(/^(?:改成|改为)\s*/, ''))]
-          // Complete standalone words need adjacent record context; corrections need
-          // an adjacent valid result. Unrelated clauses and intervening fields block both.
-          if (value && (modifying ? previousResultCorrection : previousBareResult)) {
+          // Explicit Chinese judgements can stand alone; other vocabulary keeps its
+          // record context requirement. Corrections still need an adjacent valid result.
+          const explicitJudgement = clause === '合格' || clause === '不合格'
+          if (value && (modifying ? previousResultCorrection : explicitJudgement || previousBareResult)) {
             result.result = value
             recordSeen = true
             allowBareResult = expressionPart(raw).adjacent
@@ -130,8 +160,8 @@ export function createTextParser(): TextParserModule {
         }
         if (!target) continue
         // Connector whitespace may include line breaks; consume it before clause boundaries.
-        const connected = correction ? raw.trimStart() : raw.replace(/^(?:\s*(?:改成|改为|是|为|：|:))?\s*/, '')
-        const part = expressionPart(connected)
+        const connected = correction ? raw.trimStart() : withoutConnector(raw)
+        const part = expressionPart(connected, isMeasurement(target))
         const expression = part.expression
         if (isMeasurement(target)) {
           const candidate = measurementCandidate(expression, target)

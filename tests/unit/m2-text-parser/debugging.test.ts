@@ -79,7 +79,7 @@ describe('M2 regression: ASCII-only English result folding', () => {
     ['结果FAIL', { result: 'FAIL' }],
     ['结果FaIl', { result: 'FAIL' }],
     ['结果合格', { result: 'PASS' }],
-    ['结果通过', { result: 'PASS' }],
+    ['结果通过', {}], // Approved speech repair: no PASS from process descriptions.
     ['结果不合格', { result: 'FAIL' }],
     ['结果不通过', { result: 'FAIL' }],
   ])('%s', (input, expected) => {
