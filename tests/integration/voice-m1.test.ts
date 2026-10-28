@@ -42,6 +42,36 @@ let dispose: (() => void) | undefined
 afterEach(() => { dispose?.(); dispose = undefined; vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('real M1 → App → M2 → M3 → App → M4, with browser/audio boundaries replaced', () => {
+  it('exposes readiness only after the current real M1 socket opens', async () => {
+    vi.useFakeTimers(); Commands.instances = []; Socket.instances = []
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } })
+    vi.stubGlobal('SpeechRecognition', Commands); vi.stubGlobal('WebSocket', Socket)
+    vi.stubGlobal('location', { href: 'https://inspection.example/', origin: 'https://inspection.example' })
+    vi.mocked(captureAudio).mockImplementation(async (_abort, _send, _fault, prepared) => {
+      prepared?.(() => undefined)
+      return { stop: vi.fn() }
+    })
+    const ui = reactive(useManualWorkflow())
+    dispose = ui.dispose
+    const listening = ui.toggleListening(); currentCommand().onstart?.(); await listening
+    ui.startInput(); await flush()
+    expect(ui.microphone).toBe('RECORDING')
+    expect(ui.serviceReady).toBe(false)
+    const first = Socket.instances[0]!, staleOpen = first.onopen!
+    first.onopen?.()
+    expect(ui.serviceReady).toBe(true)
+    first.result('', 0, 2); await flush(); currentCommand().onstart?.(); await flush()
+    expect(ui.serviceReady).toBe(false)
+    ui.startInput(); await flush()
+    expect(ui.microphone).toBe('RECORDING')
+    expect(ui.serviceReady).toBe(false)
+    staleOpen()
+    expect(ui.serviceReady).toBe(false)
+    Socket.instances[1]!.onerror?.(); await flush()
+    expect(ui.serviceReady).toBe(false)
+    expect(ui.microphone).toBe('IDLE')
+    expect(ui.speechError).toContain('语音连接中断')
+  })
   it('recovers explicitly through proxy login after a failed handshake, ignoring duplicate commands and old callbacks', async () => {
     vi.useFakeTimers(); Commands.instances = []; Socket.instances = []
     vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } })

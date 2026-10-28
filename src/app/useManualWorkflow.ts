@@ -92,7 +92,10 @@ export function useManualWorkflow(options: {
   const makeRecords = options.createRecords ?? createRecordManager
   let records = makeRecords()
   const csvExporter = options.csvExporter ?? createCsvExporter()
-  const speech = options.speechRecognition ?? createSpeechRecognition()
+  const serviceReady = ref(false)
+  const speech = options.speechRecognition ?? createSpeechRecognition({
+    onServiceReady: () => { if (!disposed.value) serviceReady.value = true },
+  })
   const parser = options.textParser ?? createTextParser()
   const microphone = ref(speech.getState())
   const starting = ref(false)
@@ -151,6 +154,7 @@ export function useManualWorkflow(options: {
     speechEpoch++
     input = undefined
     inputActive.value = false
+    serviceReady.value = false
     afterInput = undefined
     processing.value = false
     stopping.value = false
@@ -165,6 +169,7 @@ export function useManualWorkflow(options: {
     inputActive.value = true
     confirmedText.value = ''; interimText.value = ''; textComplete.value = false
     speechError.value = ''
+    serviceReady.value = false
     speech.startRecording()
   }
 
@@ -178,6 +183,7 @@ export function useManualWorkflow(options: {
     speech.onStateChange(value => {
       if (disposed.value) return
       microphone.value = value
+      if (value !== 'RECORDING') serviceReady.value = false
       // End queued command work on service failure, but still accept its confirmed final segment.
       if (value === 'IDLE') speechEpoch++
     }),
@@ -718,7 +724,7 @@ export function useManualWorkflow(options: {
   }
 
   return {
-    microphone, starting, processing, stopping, confirmedText, interimText, textComplete, speechError,
+    microphone, serviceReady, starting, processing, stopping, confirmedText, interimText, textComplete, speechError,
     authenticating, authMessage, loginVoice, logoutVoice, toggleListening, startInput, stopInput, inputActive,
     draft, draftState, rows, selectedIds, allSelected, partiallySelected, select, selectAll, canExport, exportRecords,
     historyStatus, historyError, displayError, message, errors,

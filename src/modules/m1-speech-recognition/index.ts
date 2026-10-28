@@ -44,7 +44,7 @@ function mapError(error: unknown, fallback = '语音识别失败。'): SpeechErr
  * Independent M1 instance. Only RECORDING opens the same-origin IAT proxy.
  * The factory configures transport location; the returned object's public contract is unchanged.
  */
-export function createSpeechRecognition(options: { proxyPath?: string } = {}): SpeechRecognitionModule {
+export function createSpeechRecognition(options: { proxyPath?: string; onServiceReady?: () => void } = {}): SpeechRecognitionModule {
   let state: MicrophoneState = 'IDLE'
   let generation = 0
   let notifying = false
@@ -323,6 +323,11 @@ export function createSpeechRecognition(options: { proxyPath?: string } = {}): S
         const start = rec.startAudio; rec.startAudio = undefined; start()
       }
       if (rec.active === session) { scheduleRotation(rec, session); pump(rec) }
+      // Display-only notification after the active socket and audio are ready.
+      if (live(rec) && !rec.stopping && rec.active === session) {
+        try { options.onServiceReady?.() }
+        catch { /* Display callbacks must not affect recognition. */ }
+      }
     }
     socket.onmessage = event => {
       if (!valid()) return

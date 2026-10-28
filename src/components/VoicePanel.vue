@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { MicrophoneState } from '../shared/data-models'
-defineProps<{ microphone: MicrophoneState; starting: boolean; processing: boolean; stopping: boolean; confirmedText: string; interimText?: string; speechError: string; textComplete: boolean; authenticating: boolean; authMessage: string; canStartInput: boolean; canStopInput: boolean }>()
+defineProps<{ serviceReady?: boolean; inputActive?: boolean; microphone: MicrophoneState; starting: boolean; processing: boolean; stopping: boolean; confirmedText: string; interimText?: string; speechError: string; textComplete: boolean; authenticating: boolean; authMessage: string; canStartInput: boolean; canStopInput: boolean }>()
 const emit = defineEmits<{ listen: []; start: []; stop: []; login: [password: string]; logout: [] }>()
 const password = ref('')
 function passwordInput(event: Event): void {
@@ -41,10 +41,10 @@ function login(): void {
       <p class="muted">已确认文本</p>
       <p v-if="confirmedText" class="transcript-final">{{ confirmedText }}</p>
       <p v-if="interimText" class="muted">临时文本（待确认）：{{ interimText }}</p>
-      <p v-if="microphone === 'IDLE'" class="transcript-final muted">请先点击“<strong>开始监听</strong>”</p>
-      <p v-else-if="!confirmedText && !interimText && !speechError" class="transcript-final muted">
+      <p v-if="inputActive && !confirmedText && !interimText && !stopping && !processing && !speechError" class="transcript-final muted" role="status">{{ serviceReady && microphone === 'RECORDING' ? '请开始说话' : '连接中' }}</p>
+      <p v-else-if="microphone === 'IDLE'" class="transcript-final muted">请先点击“<strong>开始监听</strong>”</p>
+      <p v-else-if="!confirmedText && !interimText && !speechError && !stopping && !processing" class="transcript-final muted">
         <template v-if="microphone === 'LISTENING'">请说“<strong>开始输入</strong>”</template>
-        <template v-else>请开始说话</template>
       </p>
       <p v-if="confirmedText && microphone === 'LISTENING' && !speechError" class="transcript-final muted">请说“<strong>开始输入</strong>”继续输入</p>
     </div>
