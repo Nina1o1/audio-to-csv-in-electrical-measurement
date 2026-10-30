@@ -6,6 +6,7 @@ import { captureAudio, type AudioInput } from './audio'
 import { commandRecognition, observeOffline, proxySocket, type CommandRecognition } from './browser'
 import { checkMicrophoneEnvironment, checkMicrophonePermission, commandError, microphoneError, microphoneUnavailable } from './microphone'
 import { m1Diagnostic, type Diagnostic } from './debug'
+import { commandTiming } from './command-timing'
 import { audioFrame, commandOf, decodeIat, IatText, recordingText } from './protocol'
 
 type Timer = ReturnType<typeof setTimeout>
@@ -100,6 +101,8 @@ export function createSpeechRecognition(options: { proxyPath?: string; onService
       old.onstart = () => { try { old.abort() } catch { /* Native engine has not become stoppable. */ } }
       old.onend = () => { old.onstart = null; old.onend = null }
       old.onerror = null; old.onresult = null
+      old.onaudiostart = null; old.onsoundstart = null; old.onspeechstart = null
+      old.onspeechend = null; old.onsoundend = null; old.onaudioend = null
       try { old.abort() } catch { /* Already stopped. */ }
     }
   }
@@ -188,6 +191,7 @@ export function createSpeechRecognition(options: { proxyPath?: string; onService
     let engine: CommandRecognition
     try { checkMicrophoneEnvironment(); engine = commandRecognition() } catch (error: unknown) { trace('command-listening-unavailable'); fail(mapError(error)); return }
     recognition = engine
+    const timing = commandTiming(trace)
     let hadResult = false, started = false
     const consumed = new Map<number, string>()
     const timeout = later(() => {
@@ -197,6 +201,14 @@ export function createSpeechRecognition(options: { proxyPath?: string; onService
       }
     }, 10_000)
     const live = () => recognition === engine && generation === token
+    if (timing) {
+      engine.onaudiostart = () => { if (live()) trace('command-audio-start') }
+      engine.onsoundstart = () => { if (live()) timing.sound() }
+      engine.onspeechstart = () => { if (live()) timing.speech() }
+      engine.onspeechend = () => { if (live()) trace('command-speech-end') }
+      engine.onsoundend = () => { if (live()) trace('command-sound-end') }
+      engine.onaudioend = () => { if (live()) trace('command-audio-end') }
+    }
     engine.onstart = () => {
       if (!live()) { try { engine.abort() } catch { /* Stale native startup. */ } return }
       cancel(timeout); started = true
@@ -205,6 +217,7 @@ export function createSpeechRecognition(options: { proxyPath?: string; onService
       change('LISTENING'); request?.resolve()
     }
     engine.onresult = event => {
+      const receivedAtMs = timing ? performance.now() : 0
       if (!live() || !started || state !== 'LISTENING') {
         trace('command-result-ignored', { reason: !live() ? 'stale-engine' : !started ? 'not-started' : 'not-listening' })
         return
@@ -212,6 +225,7 @@ export function createSpeechRecognition(options: { proxyPath?: string; onService
       for (let index = event.resultIndex; index < event.results.length; index++) {
         const result = event.results[index]
         if (!result) continue
+        timing?.result(index, result[0].transcript, result.isFinal, receivedAtMs)
         if (!result.isFinal) {
           if (++interimCount === 1 || interimCount % 10 === 0) trace('command-result-interim', { index, textLength: result[0].transcript.length, count: interimCount })
           continue
@@ -224,7 +238,8 @@ export function createSpeechRecognition(options: { proxyPath?: string; onService
         trace('command-result-final', { index, textLength: text.length, matched: Boolean(command), command })
         if (command) {
           trace('command-event-emitted', { command })
-          emit(commands, () => command)
+          if (command === 'START_INPUT' && timing) timing.emit(index, () => emit(commands, () => command))
+          else emit(commands, () => command)
         }
       }
     }

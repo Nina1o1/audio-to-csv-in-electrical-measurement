@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>Web Speech 独立延迟诊断</title>
+<p>单次测试：点击开始，说“开始输入”，等待 final 后点击结束。仅输出时间及匹配标记，不执行业务命令。</p>
+<button id="start">开始测试</button>
+<button id="stop" disabled>结束测试</button>
+<p>Console 查看事件；speechLatency.summary() 查看有效样本中位数和 P90。</p>
+<p id="progress" role="status"></p>
+<pre id="report"></pre>
+<script>
+  const params = new URLSearchParams(location.search)
+  const compare = params.get('compare') === '1'
+  const samples = []
+  const attempts = []
+  let engine, trial = 0
+  const start = document.querySelector('#start'), stop = document.querySelector('#stop')
+  const progress = document.querySelector('#progress'), report = document.querySelector('#report')
+  const difference = (end, begin) => end === undefined || begin === undefined ? undefined : end - begin
+  const summary = (continuous) => ['t2ToT3Ms', 't3ToT5Ms', 't4ToT5Ms', 'speechEndToFinalMs'].map(metric => {
+    const values = samples.filter(row => row.matched && (continuous === undefined || row.continuous === continuous))
+      .map(row => row[metric]).filter(Number.isFinite).sort((a, b) => a - b)
+    const n = values.length
+    return { metric, n, median: n ? (values[Math.floor((n - 1) / 2)] + values[Math.floor(n / 2)]) / 2 : undefined,
+      p90: n ? values[Math.ceil(n * .9) - 1] : undefined }
+  })
+  const count = continuous => samples.filter(row => row.matched && row.continuous === continuous).length
+  const complete = () => count(true) >= 10 && count(false) >= 10
+  function render() {
+    if (!compare) return
+    progress.textContent = `原配置 ${count(true)}/10；单次模式 ${count(false)}/10。${complete() ? '采样完成，请把下方结果发回。' : '每轮等提示后只说一次，随后保持安静；收到 final 后会自动结束本轮。'}`
+    report.textContent = JSON.stringify({ continuous: summary(true), single: summary(false), attempts }, null, 2)
+  }
+  window.speechLatency = { samples, summary, attempts }
+  render()
+  start.onclick = () => {
+    if (engine || (compare && complete())) return
+    const Constructor = window.SpeechRecognition ?? window.webkitSpeechRecognition
+    if (!Constructor) { progress.textContent = '当前浏览器不支持，请在原 Chrome 打开本页。'; return }
+    engine = new Constructor()
+    engine.lang = 'zh-CN'
+    // Comparison switches apply only to this isolated page, never to production M1.
+    engine.continuous = compare ? (count(true) >= 10 ? false : count(false) >= 10 ? true : trial % 2 === 0) : params.get('continuous') !== '0'
+    engine.interimResults = params.get('interim') !== '0'
+    const id = ++trial, results = new Map()
+    const attempt = { trial: id, continuous: engine.continuous, status: 'starting' }
+    attempts.push(attempt)
+    let captured = false
+    let onset = {}, speechEnd
+    const log = (event, fields = {}) => console.debug('[Speech probe]', { trial: id, event, atMs: performance.now(), ...fields })
+    engine.onstart = () => {
+      attempt.status = 'listening'
+      progress.textContent = `第 ${id} 轮，${engine.continuous ? '原配置' : '单次模式'}：现在说一次“开始输入”，然后保持安静。`
+      log('start', { continuous: engine.continuous, interimResults: engine.interimResults })
+    }
+    engine.onaudiostart = () => log('audiostart')
+    engine.onsoundstart = () => { onset = { T1: performance.now() }; log('T1', onset) }
+    engine.onspeechstart = () => {
+      if (onset.T2 !== undefined) onset = {}
+      onset.T2 = performance.now(); log('T2', onset)
+    }
+    engine.onspeechend = () => { speechEnd = performance.now(); log('speechend') }
+    engine.onsoundend = () => log('soundend')
+    engine.onaudioend = () => log('audioend')
+    engine.onresult = event => {
+      const now = performance.now()
+      if (compare && captured) return
+      for (let index = event.resultIndex; index < event.results.length; index++) {
+        const result = event.results[index]
+        let row = results.get(index)
+        if (!row) { row = { trial: id, index, ...onset, T3: now }; results.set(index, row); log('T3', row) }
+        const text = result[0].transcript
+        if (!text.includes('开始输入')) {
+          if (compare && result.isFinal) {
+            captured = true; attempt.status = 'unmatched-final'; engine.abort(); render(); return
+          }
+          continue
+        }
+        if (!result.isFinal) { if (row.T4 === undefined) { row.T4 = now; log('T4', row) }; continue }
+        if (row.T5 !== undefined) continue
+        row.T5 = now
+        row.continuous = attempt.continuous
+        row.matched = text.trim().replace(/[，。！？；,.!?;]+$/u, '').trim() === '开始输入'
+        row.t2ToT3Ms = difference(row.T3, row.T2)
+        row.t3ToT5Ms = difference(row.T5, row.T3)
+        row.t4ToT5Ms = difference(row.T5, row.T4)
+        row.speechEndToFinalMs = difference(row.T5, speechEnd)
+        samples.push({ ...row }); log('T5', row)
+        if (compare) {
+          captured = true; attempt.status = row.matched ? 'matched-final' : 'unmatched-final'
+          // End only after final was timed; never force final or dispatch a command.
+          engine.abort(); render(); return
+        }
+      }
+    }
+    engine.onerror = event => {
+      const code = ['no-speech', 'network', 'not-allowed', 'service-not-allowed', 'audio-capture', 'aborted', 'language-not-supported'].includes(event.error) ? event.error : 'other'
+      if (!captured) attempt.status = code
+      log('error', { code })
+    }
+    engine.onend = () => {
+      if (attempt.status === 'listening') attempt.status = 'ended-without-target-final'
+      log('end'); engine = undefined; start.disabled = compare && complete(); stop.disabled = true
+      render()
+    }
+    start.disabled = true; stop.disabled = false
+    try { engine.start() }
+    catch { attempt.status = 'start-failed'; engine = undefined; start.disabled = false; stop.disabled = true; log('start-failed'); render() }
+  }
+  stop.onclick = () => {
+    if (engine) { attempts.at(-1).status = 'cancelled'; engine.abort(); render() }
+  }
+</script>
+</html>

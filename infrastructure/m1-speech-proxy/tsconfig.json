@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.node.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "outDir": "./dist",
+    "rootDir": "../..",
+    "noUncheckedIndexedAccess": true
+  },
+  "include": ["node-server.ts", "quota.ts", "proxy-core.ts"]
+}

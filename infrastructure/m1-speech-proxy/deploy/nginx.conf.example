@@ -1,0 +1,36 @@
+# Replace app.example and certificate paths. Include inside nginx's http {}.
+map $http_upgrade $m1_connection_upgrade {
+    default upgrade;
+    '' close;
+}
+server {
+    listen 80;
+    server_name app.example;
+    return 301 https://app.example$request_uri;
+}
+server {
+    listen 443 ssl;
+    server_name app.example;
+    ssl_certificate /etc/ssl/m1/fullchain.pem;
+    ssl_certificate_key /etc/ssl/m1/privkey.pem;
+    root /opt/m1-proxy/dist;
+    client_max_body_size 1k;
+    client_header_timeout 10s;
+    client_body_timeout 10s;
+    # Never log Cookie, request body, vendor URL or audio. Bound/rotate standard logs.
+    location /api/m1/ {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_http_version 1.1;
+        proxy_set_header Host app.example;
+        proxy_set_header Origin $http_origin;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $m1_connection_upgrade;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_buffering off;
+    }
+    location / { try_files $uri $uri/ /index.html; }
+}

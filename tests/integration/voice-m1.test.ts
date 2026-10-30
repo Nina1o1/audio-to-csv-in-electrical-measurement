@@ -42,6 +42,38 @@ let dispose: (() => void) | undefined
 afterEach(() => { dispose?.(); dispose = undefined; vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('real M1 → App → M2 → M3 → App → M4, with browser/audio boundaries replaced', () => {
+  it('correlates M1 final dispatch with App handling without bypassing its microtask or deduplication', async () => {
+    vi.useFakeTimers(); Commands.instances = []; Socket.instances = []
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } })
+    vi.stubGlobal('SpeechRecognition', Commands); vi.stubGlobal('WebSocket', Socket)
+    vi.stubGlobal('location', { href: 'https://inspection.example/', origin: 'https://inspection.example', search: '?m1Debug=1' })
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() })
+    const log = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
+    vi.mocked(captureAudio).mockImplementation(async (_abort, _send, _fault, prepared) => {
+      prepared?.(() => undefined)
+      return { stop: vi.fn() }
+    })
+    const ui = reactive(useManualWorkflow()); dispose = ui.dispose; ui.initialize()
+    const listening = ui.toggleListening(); currentCommand().onstart?.(); await listening
+    currentCommand().result('开始输入'); currentCommand().result('开始输入')
+    // Single-shot recognition can end before App handles the command microtask.
+    currentCommand().onend?.()
+    expect(ui.microphone).toBe('LISTENING')
+    expect(log.mock.calls.some(call => call[1]?.point === 'T7')).toBe(false)
+    await flush()
+    expect(ui.microphone).toBe('RECORDING')
+    expect(captureAudio).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(1000)
+    expect(Commands.instances).toHaveLength(1)
+    expect(ui.microphone).toBe('RECORDING')
+    const summary = log.mock.calls.find(call => call[1]?.event === 'command-latency')?.[1]
+    const handled = log.mock.calls.filter(call => call[1]?.point === 'T7')
+    expect(handled).toHaveLength(1)
+    expect(handled[0]?.[1]).toEqual(expect.objectContaining({
+      listeningId: summary.listeningId, index: summary.index, t6ToT7Ms: expect.any(Number),
+    }))
+    expect(JSON.stringify(log.mock.calls)).not.toContain('开始输入')
+  })
   it('exposes readiness only after the current real M1 socket opens', async () => {
     vi.useFakeTimers(); Commands.instances = []; Socket.instances = []
     vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } })

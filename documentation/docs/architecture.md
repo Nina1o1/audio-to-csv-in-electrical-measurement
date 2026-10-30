@@ -177,3 +177,13 @@ Checkpoint B 已同步纯数值共享模型与独立模块实现，并在 App �
 | R4（P2）文件名规则 | 给出自定义 CSV 文件名的明确接受条件，替换“按原文件名规则”的悬空引用 | 本文件第 6 节与 Public Interface 第 6、7 节已同步 |
 
 R3 仅需替换类型声明，不改变字段、emptyDraftFields、接口签名或数据格式；无需新增依赖、单位结构、存储版本或迁移流程。后续业务验收用例应使用上述统一约定。
+
+## 阿里云代理平台适配
+
+新增 Node.js + ws 单进程入口，目标为大陆轻量服务器 2vCPU/1GiB，Nginx 提供同源 HTTPS/WSS。
+共享口令和 Cookie、M1–M5 Public Interface、模型与 App 数据流保持不变。
+原 Worker 继续保留，与 Node 复用平台无关代理逻辑；不引入业务后端或记录数据库。
+SQLite 仅保存代理日/月连接尝试额度，事务提交后才连接讯飞；缺限额/缺账本拒绝启动。
+连接上限包含握手、关闭及异常隔离，每次启动冷却 90 秒。多机/多进程不在支持范围内。
+Vite 可配置远程开发代理及可信 localhost HTTPS，npm run dev 无需本地后端；未配置时仅前端。
+详细配置、限制、人工验收及回滚见 infrastructure/m1-speech-proxy/deploy/README.md。

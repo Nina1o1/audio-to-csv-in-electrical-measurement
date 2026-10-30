@@ -1,5 +1,5 @@
 /** Local debug-build observer only. No App calls, microphone acquisition or transcript storage. */
-if (import.meta.env.MODE === 'm1-debug' && new URLSearchParams(location.search).get('m1Debug') === '1') {
+if ((import.meta.env.DEV || import.meta.env.MODE === 'm1-debug') && new URLSearchParams(location.search).get('m1Debug') === '1') {
   const entries: Record<string, unknown>[] = []
   const panel = document.createElement('aside')
   panel.setAttribute('aria-label', 'M1 开发诊断')

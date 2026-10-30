@@ -280,7 +280,7 @@ describe('M1 confirmed voice commands', () => {
     currentCommand().result('开始输入。', true, 1)
     expect(received).toHaveBeenCalledExactlyOnceWith('START_INPUT')
     const entries = log.mock.calls.map(call => call[1] as { event: string; listeningId?: number; matched?: boolean; command?: string })
-    expect(entries.map(entry => entry.event)).toEqual([
+    expect(entries.map(entry => entry.event).filter(event => !['command-timing', 'command-latency'].includes(event))).toEqual([
       'command-listening-requested', 'command-listening-started', 'command-result-interim',
       'command-result-final', 'command-result-final', 'command-event-emitted',
     ])

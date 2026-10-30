@@ -4,6 +4,12 @@ export interface CommandRecognition {
   continuous: boolean
   interimResults: boolean
   onstart: (() => void) | null
+  onaudiostart?: (() => void) | null
+  onsoundstart?: (() => void) | null
+  onspeechstart?: (() => void) | null
+  onspeechend?: (() => void) | null
+  onsoundend?: (() => void) | null
+  onaudioend?: (() => void) | null
   onend: (() => void) | null
   onerror: ((event: { error: string }) => void) | null
   onresult: ((event: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> }) => void) | null
@@ -20,7 +26,7 @@ export function commandRecognition(): CommandRecognition {
   if (!Constructor) throw { code: 'NOT_SUPPORTED', message: '当前浏览器不支持语音命令监听，请使用支持 Web Speech API 的浏览器后重试。' }
   const recognition = new Constructor()
   recognition.lang = 'zh-CN'
-  recognition.continuous = true
+  recognition.continuous = false
   recognition.interimResults = true
   return recognition
 }

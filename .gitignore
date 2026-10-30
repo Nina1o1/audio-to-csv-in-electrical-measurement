@@ -7,3 +7,9 @@ dist
 !.dev.vars.example
 .wrangler/
 .idea/
+.env
+.env.*
+!.env.example
+.certs/
+infrastructure/m1-speech-proxy/*.sqlite*
+infrastructure/m1-speech-proxy/*.env

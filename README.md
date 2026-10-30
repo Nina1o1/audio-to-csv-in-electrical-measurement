@@ -10,8 +10,8 @@ Checkpoint B 已完成前端业务接线：M1 最终语音经 App → M2 → M3 
 
 ```bash
 npm ci
-# 全功能页面（需先配置下文的本地语音代理）
-npm run dev:voice
+# 阿里云代理入口：按 .env.example 配置 .env.local、localhost HTTPS 和 SSH 隧道
+npm run dev
 ```
 
 ```bash
@@ -41,20 +41,22 @@ Web Speech 在无VPN网络下的可用性仍需目标设备实测，当前修复
 
 桌面 Chrome／Edge，通过 HTTPS（本地开发可使用 localhost）访问。LISTENING 使用浏览器中文语音命令识别，RECORDING 使用已有讯飞 IAT 安全代理；浏览器及语音服务可用性需要真机验证。
 
-按 [已有代理部署说明](infrastructure/m1-speech-proxy/README.md) 配置同源 `/api/m1/*` 路由、访问口令及服务端讯飞凭据。前端构建不包含代理，不部署 Worker，不安装额外服务；Vite 默认也不会转发这些路由。仅运行 `npm run dev` 不代表已具备真实讯飞连接。
+阿里云方案使用 `npm run dev`，配置见 [阿里云部署与开发说明](infrastructure/m1-speech-proxy/deploy/README.md)。
+本地 `.env.local` 设置远程 HTTPS 目标，或设置数字 loopback SSH 隧道目标；并配置可信 localhost 证书。
+配置 SSH 选项后，Vite 自动启动和重连隧道。未设置代理目标时仅提供前端及手动功能。
 
-展开页面“语音代理访问”，输入共享访问口令并登录。该口令不是讯飞 APIKey／APISecret；前端提交后清空输入框，不写入 localStorage。服务端使用 HttpOnly Cookie 管理已有会话；有效会话可直接开始监听。
+展开页面“语音代理访问”，输入阿里云服务配置的访问口令并登录。该口令不是讯飞 APIKey/APISecret；
+前端提交后清空输入框，不写入 localStorage，服务端使用 HttpOnly Cookie。
 
-本地真实语音开发使用已有 Worker 同时提供完整 App 和 `/api/m1/*`，避免 Vite 5173 仅有页面、没有语音接口的问题：
+`npm run dev:voice` 是保留的 **Cloudflare 回滚/验收入口**，使用 Wrangler 和 `.dev.vars`，
+不会连接阿里云，访问口令和会话签名可能与阿里云不同。请勿把它当作阿里云启动命令。
+它默认也占用 5173，不能与 Vite 同时运行；需要单独验证 Cloudflare 时使用：
 
 ```bash
-# 先在 infrastructure/m1-speech-proxy/.dev.vars 配置已有服务端变量（不要提交凭据）
-npm run dev:voice
-# 默认使用 HTTPS 5173；先停止占用 5173 的 Vite。也可显式指定其他端口：
 npm run dev:voice -- --port 8788
 ```
 
-打开命令输出的 `https://localhost:5173/`（或所选端口），接受本地开发证书后，在这个页面内登录语音代理再开始监听。该命令沿用已有固定版本 Wrangler，由 npm 首次准备开发工具，不新增项目运行依赖、不部署云端服务；构建输出位于临时目录，修改代码后需重启命令重新构建。单独的 `npm run dev` 仅用于前端热更新和手动功能，不能与完整服务器同时占用 5173；如需并行，可用 `npm run dev -- --port 5174 --strictPort`。全功能测试只需打开 HTTPS 5173 一个页面。
+切换代理平台后须在当前页面重新登录，不要复用另一个平台签发的会话。
 
 浏览器 localStorage 按协议、主机及端口隔离：`http://localhost:5173`、`https://localhost:5173`、8787、8788 的历史互不共享，原有历史仍保留在原来源；切换测试地址前可先导出需要的记录。
 
@@ -75,4 +77,4 @@ npm run dev:voice -- --port 8788
 - `tests/integration/`：App 协调、真实模块串联和 Vue 组件事件回归。
 - `infrastructure/m1-speech-proxy/`：已有安全代理；与静态前端分开部署。
 
-规范入口：[Architecture](documentation/docs/architecture.md)、[Public Interface](documentation/docs/public-interface.md)、[Data Models](documentation/docs/data-models.md)、[页面要求](documentation/docs/page-requirements.md)。公开接口、共享模型、标准单位及存储格式保持不变，没有新增依赖。
+规范入口：[Architecture](documentation/docs/architecture.md)、[Public Interface](documentation/docs/public-interface.md)、[Data Models](documentation/docs/data-models.md)、[页面要求](documentation/docs/page-requirements.md)。公开接口、共享模型、标准单位及存储格式保持不变。Node 代理使用 ws 和 Node 内置 SQLite。

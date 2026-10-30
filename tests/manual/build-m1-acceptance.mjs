@@ -42,6 +42,7 @@ const page = app ? '/' : '/tests/manual/m1-acceptance.html'
 console.log(`Serve its files under the same HTTPS origin as /api/m1/*, then open ${page}.`)
 
 if (local) {
+  console.log('Cloudflare/WRANGLER legacy entry; this does NOT use the Alibaba Cloud proxy. For Alibaba Cloud run npm run dev with .env.local configured.')
   // Run the existing proxy locally; never deploy, tunnel, or expose it on the LAN.
   console.log(`Local M1 ${app ? 'App' : 'test'}: https://localhost:${port}${page}`)
   console.log('If this port is already occupied, stop that proxy first or pass --port with another port.')

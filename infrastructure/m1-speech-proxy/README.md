@@ -71,3 +71,9 @@ Cookie、计时器、双连接、路由和中国大陆网络可达性。不要�
 - https://www.xfyun.cn/doc/asr/voicedictation/API.html
 - https://developers.cloudflare.com/workers/runtime-apis/websockets/
 - https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/
+
+## 阿里云 Node.js 入口
+
+新增平台入口及部署模板见 [deploy/README.md](deploy/README.md)。
+Worker 与 Node 复用 proxy-core.ts 中的签名、Cookie、音频校验与桥接规则，浏览器协议不变。
+原 Cloudflare 配置和 dev:voice 保留；Node 使用独立持久化预算及单进程连接控制。

@@ -1,0 +1,27 @@
+[Unit]
+Description=M1 speech WebSocket proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=m1
+Group=m1
+WorkingDirectory=/opt/m1-proxy
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/m1-proxy.env
+ExecStart=/usr/bin/node /opt/m1-proxy/infrastructure/m1-speech-proxy/dist/infrastructure/m1-speech-proxy/node-server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=100
+KillMode=control-group
+UMask=0077
+StateDirectory=m1-proxy
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/m1-proxy
+
+[Install]
+WantedBy=multi-user.target

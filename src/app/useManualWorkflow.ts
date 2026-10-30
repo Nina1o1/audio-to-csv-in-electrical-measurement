@@ -5,6 +5,7 @@ import type { CsvExporterModule } from '../contracts/m5-csv-exporter'
 import type { SpeechRecognitionModule } from '../contracts/m1-speech-recognition'
 import type { TextParserModule } from '../contracts/m2-text-parser'
 import { createSpeechRecognition } from '../modules/m1-speech-recognition'
+import { captureStartInputTiming } from '../modules/m1-speech-recognition/command-timing'
 import { createTextParser } from '../modules/m2-text-parser'
 import { createDraftManager } from '../modules/m3-draft-manager'
 import { createRecordManager } from '../modules/m4-record-manager'
@@ -226,6 +227,7 @@ export function useManualWorkflow(options: {
       if (!disposed.value) speechError.value = `语音错误：${error.message}`
     }),
     speech.onCommand(command => {
+      const markHandled = command === 'START_INPUT' ? captureStartInputTiming() : undefined
       if (speech.getState() === 'IDLE') return
       const epoch = speechEpoch, current = input
       const recording = speech.getState() === 'RECORDING'
@@ -234,7 +236,7 @@ export function useManualWorkflow(options: {
         if (disposed.value || epoch !== speechEpoch) return
         if (recording && command !== 'STOP_INPUT') return rejectOperation()
         switch (command) {
-          case 'START_INPUT': return startInput()
+          case 'START_INPUT': markHandled?.(); return startInput()
           case 'STOP_INPUT': if (input === current) stopInput(); return
           case 'SAVE': return requestSave()
           case 'DELETE': return requestDelete()

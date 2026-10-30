@@ -9,16 +9,21 @@
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "build-only": "vite build",
-    "type-check": "vue-tsc --noEmit && tsc --project tsconfig.node.json --noEmit",
+    "type-check": "vue-tsc --noEmit && tsc --project tsconfig.node.json --noEmit && tsc -p infrastructure/m1-speech-proxy/tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "proxy:build": "tsc -p infrastructure/m1-speech-proxy/tsconfig.json",
+    "proxy:start": "node infrastructure/m1-speech-proxy/dist/infrastructure/m1-speech-proxy/node-server.js",
+    "proxy:init-quota": "node infrastructure/m1-speech-proxy/dist/infrastructure/m1-speech-proxy/node-server.js --init-quota"
   },
   "dependencies": {
-    "vue": "^3.5.42"
+    "vue": "^3.5.42",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@tsconfig/node24": "^24.0.5",
     "@types/node": "^24.13.4",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
     "npm-run-all2": "^9.0.3",
