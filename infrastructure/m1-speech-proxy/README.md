@@ -1,3 +1,7 @@
+> 本文为保留的 Cloudflare 回滚实现说明，口令/Cookie 要求仅适用于旧 Worker。
+> 当前阿里云 Node 公共语音入口已移除鉴权，部署及尚未完成的公共地址配置见
+> [阿里云说明](deploy/README.md)。旧 Worker 需匹配旧前端，不能直接使用当前无登录 UI 的前端。
+
 # M1专属IAT代理
 
 这是可部署的Cloudflare Workers实现，使用平台原生WebSocket与Web Crypto，不新增运行依赖。

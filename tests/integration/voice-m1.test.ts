@@ -104,13 +104,13 @@ describe('real M1 → App → M2 → M3 → App → M4, with browser/audio bound
     expect(ui.microphone).toBe('IDLE')
     expect(ui.speechError).toContain('语音连接中断')
   })
-  it('recovers explicitly through proxy login after a failed handshake, ignoring duplicate commands and old callbacks', async () => {
+  it('recovers explicitly without login after a failed handshake, ignoring duplicate commands and old callbacks', async () => {
     vi.useFakeTimers(); Commands.instances = []; Socket.instances = []
     vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } })
     vi.stubGlobal('SpeechRecognition', Commands); vi.stubGlobal('WebSocket', Socket)
     vi.stubGlobal('location', { href: 'https://inspection.example/', origin: 'https://inspection.example' })
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() })
-    const login = vi.fn(async () => new Response(null, { status: 204 }))
+    const login = vi.fn()
     vi.stubGlobal('fetch', login)
     const leases: { stop: ReturnType<typeof vi.fn>; start: ReturnType<typeof vi.fn>; send: (frame: Uint8Array) => void }[] = []
     vi.mocked(captureAudio).mockImplementation(async (_abort, send, _fault, prepared) => {
@@ -133,8 +133,7 @@ describe('real M1 → App → M2 → M3 → App → M4, with browser/audio bound
     expect(old.send).not.toHaveBeenCalled(); expect(leases[0]!.start).not.toHaveBeenCalled()
     expect(leases[0]!.stop).toHaveBeenCalledOnce(); expect(complete).toHaveBeenCalledTimes(1)
     expect(vi.getTimerCount()).toBe(0)
-    await ui.loginVoice('test-access-password-only')
-    expect(login).toHaveBeenCalledOnce(); expect(ui.authMessage).toContain('登录成功')
+    expect(login).not.toHaveBeenCalled()
     const next = ui.toggleListening(); currentCommand().onstart?.(); await next
     currentCommand().result('开始输入'); await flush()
     const socket = Socket.instances[1]!

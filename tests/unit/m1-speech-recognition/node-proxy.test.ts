@@ -29,6 +29,9 @@ describe('local development origin boundary', () => {
     expect(localDevRequest({ headers: { host: 'localhost:5173', ':authority': 'attacker.example', origin: 'https://localhost:5173' } })).toBe(false)
     expect(localDevRequest({ headers: { host: 'localhost:5173', origin: 'https://attacker.example' } })).toBe(false)
     expect(localDevRequest({ headers: { ':authority': 'localhost:5173' } })).toBe(false)
+    expect(localDevRequest({ headers: { host: 'localhost:5173', origin: 'http://localhost:5173' } }, 'http:')).toBe(true)
+    expect(localDevRequest({ headers: { host: 'localhost:5173', origin: 'https://localhost:5173' } }, 'http:')).toBe(false)
+    expect(localDevRequest({ headers: { host: 'attacker.example:5173', origin: 'http://attacker.example:5173' } }, 'http:')).toBe(false)
   })
 })
 
@@ -86,6 +89,13 @@ describe('persistent budget and bounded rate limiting', () => {
     expect(window.allow('c', 3)).toBe(false)
     expect(window.allow('c', 60_001)).toBe(true)
   })
+  it('needs vendor credentials and budgets but no access password or session secret', () => {
+    const env = { APP_ORIGIN: 'https://app.example', IAT_APP_ID: 'app', IAT_API_KEY: 'key',
+      IAT_API_SECRET: 'secret', QUOTA_DB: '/tmp/quota.sqlite', MAX_CONNECTIONS: '2',
+      DAILY_ATTEMPTS: '10', MONTHLY_ATTEMPTS: '100' }
+    expect(configuration(env)).toMatchObject({ concurrent: 2, daily: 10, monthly: 100 })
+    expect(() => configuration({ ...env, IAT_API_SECRET: '' })).toThrow('IAT_API_SECRET')
+  })
   it('requires explicit budgets and does not accept malformed values', () => {
     expect(() => configuration({ APP_ORIGIN: 'https://app.example' })).toThrow()
     expect(() => new Quota(ledger(), 0, 1, true)).toThrow()
@@ -105,7 +115,7 @@ async function fixture(budget = 10, concurrent = 2, recoveryMs = 0) {
     const frame = JSON.parse(data.toString()) as { data: { status: number } }
     if (frame.data.status === 2) ws.send(JSON.stringify({ code: 0, sid: 'private', data: { status: 2, result: { sn: 0, ws: [{ cw: [{ w: '完成。' }] }] } } }))
   }))
-  const config: Config = { origin: 'https://app.example', appId: 'app', apiKey: 'key', apiSecret: 'secret', password: 'test-password-at-least-20', sessionSecret: 'test-session-secret-at-least-32-characters', database, daily: budget, monthly: budget, concurrent, port: 0 }
+  const config: Config = { origin: 'https://app.example', appId: 'app', apiKey: 'key', apiSecret: 'secret', database, daily: budget, monthly: budget, concurrent, port: 0 }
   const proxy = createProxy(config, { recoveryMs, dial: () => { dials++; return new WebSocket(`ws://127.0.0.1:${upstreamAddress.port}`) } })
   proxy.server.listen(0, '127.0.0.1'); await once(proxy.server, 'listening')
   const address = proxy.server.address()
@@ -126,10 +136,8 @@ async function fixture(budget = 10, concurrent = 2, recoveryMs = 0) {
       }); req.on('error', reject); req.end(body)
     })
   }
-  const loggedIn = await http('/api/m1/login', JSON.stringify({ password: config.password }))
-  expect(loggedIn.status).toBe(204)
-  function connect(cookie = loggedIn.cookie) {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/api/m1/iat`, { headers: { ...headers, ...(cookie ? { Cookie: cookie } : {}) } })
+  function connect(extra: Record<string, string> = {}, path = '/api/m1/iat') {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}${path}`, { headers: { ...headers, ...extra } })
     ws.on('error', () => undefined); clients.push(ws); return ws
   }
   return { connect, http, proxy, config, messages, dials: () => dials }
@@ -139,11 +147,13 @@ async function rejection(ws: WebSocket): Promise<number> {
 }
 
 describe('real Node HTTP and WebSocket transport with a local mock vendor', () => {
-  it('preserves authentication, audio injection, redaction and final close', async () => {
+  it('allows anonymous access while preserving origin checks, audio injection, redaction and final close', async () => {
     const f = await fixture()
-    expect((await f.http('/api/m1/login', '{"password":"wrong"}')).status).toBe(401)
+    expect((await f.http('/api/m1/login', '{"password":"wrong"}')).status).toBe(404)
+    expect((await f.http('/api/m1/logout')).status).toBe(404)
     expect((await f.http('/api/m1/login', '{}', { Origin: 'https://attacker.example' })).status).toBe(403)
-    expect(await rejection(f.connect(''))).toBe(401)
+    expect(await rejection(f.connect({ Origin: 'https://attacker.example' }))).toBe(403)
+    expect(await rejection(f.connect({}, '/api/m1/iat?target=wss://attacker.example'))).toBe(404)
     expect(f.dials()).toBe(0)
     const ws = f.connect(); await once(ws, 'open')
     const result = once(ws, 'message'), closed = once(ws, 'close')
@@ -153,6 +163,18 @@ describe('real Node HTTP and WebSocket transport with a local mock vendor', () =
     expect(String((await result)[0])).toContain('完成。')
     expect((await closed)[0]).toBe(1000)
     expect(JSON.parse(f.messages[0]!).common).toEqual({ app_id: 'app' })
+  })
+  it('enforces the per-IP connection limit without a session cookie', async () => {
+    const f = await fixture(100, 30)
+    for (let i = 0; i < 20; i++) await once(f.connect(), 'open')
+    expect(await rejection(f.connect())).toBe(429)
+    expect(f.dials()).toBe(20)
+  })
+  it('enforces the global connection limit across anonymous IP addresses', async () => {
+    const f = await fixture(100, 70)
+    for (let i = 0; i < 60; i++) await once(f.connect({ 'X-Real-IP': `203.0.113.${i + 1}` }), 'open')
+    expect(await rejection(f.connect({ 'X-Real-IP': '203.0.113.100' }))).toBe(429)
+    expect(f.dials()).toBe(60)
   })
   it('refuses exhausted budgets before dialing the vendor', async () => {
     const f = await fixture(1)

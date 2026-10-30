@@ -192,7 +192,7 @@ describe('Checkpoint B: App voice coordination', () => {
     expect(ui.draft.workOrder).toBe('KEEP'); expect(ui.draftState).toBe('IDLE'); expect(ui.speechError).toContain('parse failed')
     await command('START_INPUT'); expect(ui.microphone).toBe('RECORDING')
   })
-  it('invalidates queued results and commands on deletion, logout and disposal', async () => {
+  it('invalidates queued results and commands on deletion and disposal', async () => {
     const { ui, speech, parse, listen, begin, command } = setup()
     await listen(); await begin(); speech.complete('接触电阻12')
     ui.dispose(); ui.dispose(); await flush()
@@ -218,66 +218,15 @@ describe('Checkpoint B: App voice coordination', () => {
   })
 })
 
-describe('existing same-origin voice access', () => {
-  it.each(['login', 'logout'] as const)('times out a stuck %s, permits retry and ignores late success', async action => {
-    vi.useFakeTimers()
-    try {
-      const { ui } = setup()
-      let resolveOld!: (value: { ok: boolean }) => void
-      let signal: AbortSignal | undefined
-      vi.stubGlobal('fetch', vi.fn((_url, options: RequestInit) => {
-        signal = options.signal ?? undefined
-        return new Promise<{ ok: boolean }>(resolve => { resolveOld = resolve })
-      }))
-      const request = action === 'login' ? ui.loginVoice('synthetic') : ui.logoutVoice()
-      await vi.advanceTimersByTimeAsync(10_000)
-      await request
-      expect(signal?.aborted).toBe(true)
-      expect(ui.authenticating).toBe(false)
-      expect(ui.authMessage).toContain('超时')
-      ui.updateField('workOrder', 'MANUAL')
-      expect(ui.canSave).toBe(true)
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
-      await ui.loginVoice('retry')
-      const message = ui.authMessage
-      resolveOld({ ok: true }); await flush()
-      expect(ui.authMessage).toBe(message)
-      expect(ui.draft.workOrder).toBe('MANUAL')
-      expect(vi.getTimerCount()).toBe(0)
-    } finally { vi.useRealTimers() }
-  })
-  it('logs in without storing credentials, reports HTTP failure and supports logout', async () => {
-    const { ui, speech, storage } = setup()
-    const fetch = vi.fn().mockResolvedValueOnce({ ok: false }).mockResolvedValue({ ok: true })
+describe('public voice access', () => {
+  it('starts listening and recording without login HTTP requests or stored credentials', async () => {
+    const { ui, speech, storage, listen, begin } = setup()
+    const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
-    await ui.loginVoice('test-access-password'); expect(ui.authMessage).toContain('操作失败')
-    await ui.loginVoice('test-access-password'); expect(ui.authMessage).toContain('登录成功')
-    expect(fetch).toHaveBeenLastCalledWith('/api/m1/login', expect.objectContaining({
-      method: 'POST', credentials: 'same-origin', body: JSON.stringify({ password: 'test-access-password' }), signal: expect.any(AbortSignal),
-    }))
-    await ui.logoutVoice()
-    expect(fetch).toHaveBeenLastCalledWith('/api/m1/logout', expect.objectContaining({ body: undefined }))
-    expect(ui.authMessage).toContain('已退出'); expect(speech.module.stopListening).toHaveBeenCalledTimes(3)
+    await listen(); await begin()
+    expect(ui.microphone).toBe('RECORDING')
+    expect(speech.module.startRecording).toHaveBeenCalledOnce()
+    expect(fetch).not.toHaveBeenCalled()
     expect(storage.setItem).not.toHaveBeenCalled()
-  })
-  it('ignores a queued final on logout, aborts pending access on disposal and ignores late HTTP results', async () => {
-    const { ui, speech, parse, listen, begin } = setup()
-    let resolve!: (value: { ok: boolean }) => void
-    const fetch = vi.fn(() => new Promise<{ ok: boolean }>(done => { resolve = done }))
-    vi.stubGlobal('fetch', fetch)
-    await listen(); await begin(); speech.complete(fullText)
-    const logout = ui.logoutVoice(); await flush(); expect(parse).not.toHaveBeenCalled()
-    await ui.loginVoice('ignored'); expect(fetch).toHaveBeenCalledOnce()
-    const initial = ui.authMessage
-    ui.dispose(); expect(fetch.mock.calls[0]).toBeDefined()
-    resolve({ ok: true }); await logout
-    expect(ui.authMessage).toBe(initial)
-  })
-  it('reports network failure while keeping manual input available', async () => {
-    const { ui } = setup()
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network')))
-    await ui.loginVoice('test')
-    expect(ui.authMessage).toContain('无法连接'); expect(ui.authenticating).toBe(false)
-    ui.updateField('workOrder', 'MANUAL'); expect(ui.draft.workOrder).toBe('MANUAL')
   })
 })

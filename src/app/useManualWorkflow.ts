@@ -107,10 +107,6 @@ export function useManualWorkflow(options: {
   const interimText = ref('')
   const textComplete = ref(false)
   const speechError = ref('')
-  const authenticating = ref(false)
-  const authMessage = ref('请先登录语音代理；已有有效登录可直接开始监听。')
-  let authRequest: AbortController | undefined
-  let authTimer: ReturnType<typeof setTimeout> | undefined
   let releaseWriter: (() => void) | undefined
   let acquiringWriter = false
   const writerHeld = ref(false)
@@ -165,7 +161,7 @@ export function useManualWorkflow(options: {
   }
 
   function startInput(): void {
-    if (!editable.value || input || authenticating.value || speech.getState() !== 'LISTENING') return rejectOperation()
+    if (!editable.value || input || speech.getState() !== 'LISTENING') return rejectOperation()
     input = { completed: false }
     inputActive.value = true
     confirmedText.value = ''; interimText.value = ''; textComplete.value = false
@@ -255,7 +251,7 @@ export function useManualWorkflow(options: {
   ]
 
   async function toggleListening(): Promise<void> {
-    if (disposed.value || authenticating.value || speech.getState() === 'RECORDING') return
+    if (disposed.value || speech.getState() === 'RECORDING') return
     if (starting.value || speech.getState() === 'LISTENING') {
       speechEpoch++
       startRequest = undefined; starting.value = false
@@ -274,46 +270,6 @@ export function useManualWorkflow(options: {
       }
     }
   }
-
-  async function authenticateVoice(action: 'login' | 'logout', password = ''): Promise<void> {
-    if (disposed.value || authenticating.value) return
-    // Stopping may asynchronously finish a recording; it must not apply after logout/login.
-    clearTranscript(); startRequest = undefined; starting.value = false
-    speech.stopListening()
-    const request = new AbortController()
-    authRequest = request; authenticating.value = true
-    let timedOut = false
-    let rejectAborted!: () => void
-    const aborted = new Promise<never>((_resolve, reject) => {
-      rejectAborted = () => reject(new Error('Voice access request aborted.'))
-      request.signal.addEventListener('abort', rejectAborted, { once: true })
-    })
-    const timeout = setTimeout(() => { timedOut = true; request.abort() }, 10_000)
-    authTimer = timeout
-    try {
-      const response = await Promise.race([fetch(`/api/m1/${action}`, {
-        method: 'POST', credentials: 'same-origin', signal: request.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: action === 'login' ? JSON.stringify({ password }) : undefined,
-      }), aborted])
-      if (!disposed.value && authRequest === request) authMessage.value = response.ok
-        ? action === 'login' ? '语音代理登录成功，可以开始监听。' : '已退出语音代理。'
-        : '语音代理操作失败，请检查访问口令和同源代理配置。'
-    } catch {
-      if (!disposed.value && authRequest === request) authMessage.value = timedOut
-        ? '语音代理连接超时，请重试；手动输入和历史记录仍可使用。'
-        : '无法连接语音代理，请检查网络及同源部署。'
-    } finally {
-      clearTimeout(timeout)
-      request.signal.removeEventListener('abort', rejectAborted)
-      if (!disposed.value && authRequest === request) {
-        authRequest = undefined; authTimer = undefined; authenticating.value = false
-      }
-    }
-  }
-
-  function loginVoice(password: string): Promise<void> { return authenticateVoice('login', password) }
-  function logoutVoice(): Promise<void> { return authenticateVoice('logout') }
 
   function showRows(snapshot: InspectionRecord[]): void {
     rows.value = snapshot
@@ -702,8 +658,6 @@ export function useManualWorkflow(options: {
     if (disposed.value) return
     disposed.value = true
     speechEpoch++; input = undefined; afterInput = undefined; startRequest = undefined
-    authRequest?.abort()
-    clearTimeout(authTimer)
     releaseWriter?.()
     for (const unsubscribe of unsubscribeSpeech) unsubscribe()
     speech.stopListening()
@@ -727,7 +681,7 @@ export function useManualWorkflow(options: {
 
   return {
     microphone, serviceReady, starting, processing, stopping, confirmedText, interimText, textComplete, speechError,
-    authenticating, authMessage, loginVoice, logoutVoice, toggleListening, startInput, stopInput, inputActive,
+    toggleListening, startInput, stopInput, inputActive,
     draft, draftState, rows, selectedIds, allSelected, partiallySelected, select, selectAll, canExport, exportRecords,
     historyStatus, historyError, displayError, message, errors,
     pending, awaitingCheck, busy, filters, editable, canSave, renderError, historyRenderError, reportRenderError, retryRender,

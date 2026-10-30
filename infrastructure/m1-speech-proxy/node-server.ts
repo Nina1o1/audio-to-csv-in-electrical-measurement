@@ -4,11 +4,11 @@ import { isIP, Socket } from 'node:net'
 import { pathToFileURL } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import WebSocket, { WebSocketServer } from 'ws'
-import { bridge, cookieName, issueSession, lifetime, sameSecret, upstreamUrl, validSession, type EdgeSocket } from './proxy-core.js'
+import { bridge, upstreamUrl, type EdgeSocket } from './proxy-core.js'
 import { Quota, RateWindow } from './quota.js'
 
 export interface Config {
-  origin: string; appId: string; apiKey: string; apiSecret: string; password: string; sessionSecret: string
+  origin: string; appId: string; apiKey: string; apiSecret: string
   database: string; concurrent: number; daily: number; monthly: number; port: number
 }
 function positive(value: string | undefined): number {
@@ -27,7 +27,7 @@ export function configuration(env: NodeJS.ProcessEnv): Config {
   if (port > 65535) throw new Error('Invalid port.')
   return {
     origin: origin.origin, appId: required('IAT_APP_ID'), apiKey: required('IAT_API_KEY'), apiSecret: required('IAT_API_SECRET'),
-    password: required('ACCESS_PASSWORD', 20), sessionSecret: required('SESSION_SECRET', 32), database: required('QUOTA_DB'),
+    database: required('QUOTA_DB'),
     concurrent: positive(env.MAX_CONNECTIONS), daily: positive(env.DAILY_ATTEMPTS), monthly: positive(env.MONTHLY_ATTEMPTS), port,
   }
 }
@@ -74,8 +74,7 @@ export function createProxy(config: Config, options: {
   } catch (error) { lock.close(); throw error }
   const now = options.now ?? (() => performance.now())
   const readyAt = now() + (options.recoveryMs ?? 90_000)
-  const login = new RateWindow(10), connect = new RateWindow(20), total = new RateWindow(60)
-  const auth = { SESSION_SECRET: config.sessionSecret }
+  const connect = new RateWindow(20), total = new RateWindow(60)
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096, perMessageDeflate: false })
   const transports = new Set<WebSocket>()
   const slots = new Set<symbol>()
@@ -86,37 +85,18 @@ export function createProxy(config: Config, options: {
   server.headersTimeout = 10_000; server.requestTimeout = 10_000
   server.maxHeadersCount = 32
   server.on('request', req => { req.setTimeout(10_000, () => req.destroy()) })
-  function reply(res: ServerResponse, status: number, cookie?: string): void {
+  function reply(res: ServerResponse, status: number): void {
     if (res.destroyed || res.headersSent) return
-    res.writeHead(status, { 'Cache-Control': 'no-store', ...(cookie ? { 'Set-Cookie': cookie } : {}) }); res.end()
+    res.writeHead(status, { 'Cache-Control': 'no-store' }); res.end()
   }
   function trusted(req: IncomingMessage): boolean {
     return req.headers.host === new URL(config.origin).host && req.headers.origin === config.origin
       && req.headers['x-forwarded-proto'] === 'https' && typeof req.headers['x-real-ip'] === 'string' && isIP(req.headers['x-real-ip']) !== 0
   }
-  const cookie = (value: string, age: number) => `${cookieName}=${value}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${age}`
   async function http(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (req.url === '/healthz' && req.method === 'GET') { reply(res, !stopping && now() >= readyAt ? 204 : 503); return }
     if (!trusted(req)) { reply(res, 403); return }
-    if (req.method !== 'POST' || !['/api/m1/login', '/api/m1/logout'].includes(req.url ?? '')) { reply(res, 404); return }
-    if (req.url === '/api/m1/logout') { reply(res, 204, cookie('', 0)); return }
-    if (req.headers['content-type']?.split(';')[0] !== 'application/json') { reply(res, 415); return }
-    const ip = String(req.headers['x-real-ip'])
-    if (!login.allow(`ip:${ip}`) || !login.allow('total')) { reply(res, 429); return }
-    if (Number(req.headers['content-length']) > 1024) { reply(res, 413); return }
-    let size = 0
-    const chunks: Buffer[] = []
-    for await (const chunk of req) {
-      const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-      size += data.length
-      if (size > 1024) { reply(res, 413); return }
-      chunks.push(data)
-    }
-    let password: unknown
-    try { password = (JSON.parse(Buffer.concat(chunks).toString('utf8')) as { password?: unknown } | null)?.password }
-    catch { reply(res, 400); return }
-    if (typeof password !== 'string' || !await sameSecret(password, config.password)) { reply(res, 401); return }
-    reply(res, 204, cookie(await issueSession(auth), lifetime))
+    reply(res, 404)
   }
   server.on('upgrade', (req, socket, head) => {
     if (!(socket instanceof Socket)) { socket.destroy(); return }
@@ -131,11 +111,8 @@ export function createProxy(config: Config, options: {
       // Validate the downstream handshake before spending an upstream attempt.
       if (req.headers.upgrade?.toLowerCase() !== 'websocket' || req.headers['sec-websocket-version'] !== '13'
         || !/^[+/0-9A-Za-z]{22}==$/.test(String(req.headers['sec-websocket-key'] ?? ''))) return reject(400)
-      const request = new Request(`${config.origin}/api/m1/iat`, { headers: { Cookie: req.headers.cookie ?? '' } })
-      const session = await validSession(request, auth)
-      if (!session) return reject(401)
       if (socket.destroyed || stopping) return
-      if (!connect.allow(`session:${session}`) || !connect.allow(`ip:${String(req.headers['x-real-ip'])}`) || !total.allow('all')) return reject(429)
+      if (!connect.allow(`ip:${String(req.headers['x-real-ip'])}`) || !total.allow('all')) return reject(429)
       if (slots.size >= config.concurrent) return reject(429)
       const slot = Symbol(); slots.add(slot)
       let upstream: WebSocket | undefined

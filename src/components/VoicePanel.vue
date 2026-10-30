@@ -1,24 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import type { MicrophoneState } from '../shared/data-models'
-defineProps<{ serviceReady?: boolean; inputActive?: boolean; microphone: MicrophoneState; starting: boolean; processing: boolean; stopping: boolean; confirmedText: string; interimText?: string; speechError: string; textComplete: boolean; authenticating: boolean; authMessage: string; canStartInput: boolean; canStopInput: boolean }>()
-const emit = defineEmits<{ listen: []; start: []; stop: []; login: [password: string]; logout: [] }>()
-const password = ref('')
-function passwordInput(event: Event): void {
-  if (event.target instanceof HTMLInputElement) password.value = event.target.value
-}
-function login(): void {
-  const value = password.value
-  password.value = ''
-  emit('login', value)
-}
+defineProps<{ serviceReady?: boolean; inputActive?: boolean; microphone: MicrophoneState; starting: boolean; processing: boolean; stopping: boolean; confirmedText: string; interimText?: string; speechError: string; textComplete: boolean; canStartInput: boolean; canStopInput: boolean }>()
+const emit = defineEmits<{ listen: []; start: []; stop: [] }>()
 </script>
 <template>
   <section class="panel keywords-panel" aria-labelledby="keywords-title">
     <h2 id="keywords-title">语音关键词提示</h2>
     <div class="keywords-content">
       <div class="actions">
-        <button type="button" :disabled="authenticating || microphone === 'RECORDING'" :aria-describedby="speechError ? 'microphone-error voice-note' : 'voice-note'" @click="emit('listen')">{{ starting ? '取消启动' : microphone === 'IDLE' ? (speechError ? '重试监听' : '开始监听') : '停止监听' }}</button>
+        <button type="button" :disabled="microphone === 'RECORDING'" :aria-describedby="speechError ? 'microphone-error voice-note' : 'voice-note'" @click="emit('listen')">{{ starting ? '取消启动' : microphone === 'IDLE' ? (speechError ? '重试监听' : '开始监听') : '停止监听' }}</button>
         <span class="status" :class="{ 'status-idle': microphone === 'IDLE' }" role="status">{{ microphone === 'IDLE' ? '未在监听' : '监听中' }}</span>
       </div>
       <p v-if="speechError" id="microphone-error" role="alert" class="microphone-error">{{ speechError }}</p>
@@ -55,15 +45,5 @@ function login(): void {
       <button type="button" :disabled="!canStartInput" aria-describedby="voice-note" @click="emit('start')">开始输入</button>
       <button type="button" :disabled="!canStopInput" aria-describedby="voice-note" @click="emit('stop')">结束输入</button>
     </div>
-    <details>
-      <summary>语音代理访问</summary>
-      <label for="voice-password">语音访问口令（不是讯飞密钥）</label>
-      <input id="voice-password" type="password" autocomplete="off" :value="password" :disabled="authenticating || microphone === 'RECORDING'" @input="passwordInput" @keydown.enter.prevent="login">
-      <div class="actions">
-        <button type="button" :disabled="authenticating || microphone === 'RECORDING' || !password" @click="login">登录语音代理</button>
-        <button type="button" :disabled="authenticating || microphone === 'RECORDING'" @click="emit('logout')">退出语音代理</button>
-      </div>
-      <p role="status">{{ authenticating ? '正在连接语音代理…' : authMessage }}</p>
-    </details>
   </section>
 </template>

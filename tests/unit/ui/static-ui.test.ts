@@ -25,7 +25,7 @@ describe('UI layout regression', () => {
   it('shows actionable microphone errors beside status with retry, and hides them during normal listening', async () => {
     const props = { microphone: 'IDLE' as const, starting: false, processing: false, stopping: false,
       confirmedText: '', speechError: '麦克风权限未开启，请在浏览器的网站设置中允许使用麦克风，然后重试。',
-      textComplete: false, authenticating: false, authMessage: '', canStartInput: false, canStopInput: false }
+      textComplete: false, canStartInput: false, canStopInput: false }
     const html = await renderToString(createSSRApp(VoicePanel, props))
     expect(html).toContain('id="microphone-error" role="alert"')
     expect(html).toContain(props.speechError); expect(html).toContain('重试监听')
@@ -74,7 +74,9 @@ describe('UI layout regression', () => {
     const listen = (html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []).find(value => value.includes('开始监听'))
     expect(listen).toBeDefined()
     expect(listen).not.toContain('disabled')
-    expect(html).toContain('语音代理访问')
+    expect(html).not.toContain('语音代理访问')
+    expect(html).not.toContain('voice-password')
+    expect(html).not.toContain('type="password"')
     expect(html).not.toContain('Mock ·')
     expect(html).not.toContain('CSV 导出尚未接入')
     expect(html).toContain('导出全部不受筛选限制')
