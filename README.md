@@ -39,10 +39,10 @@ a2301,c-045,12 mΩ,500 MΩ,1500 V
 
 ## 数据归属
 
-- **M1** 产生文本（TranscriptSegment），单次消息，不予保存
-- **M2** 产生单次结构化数据（ParseResult），单次消息，不予保存
-- **M3** 编辑当前草稿数据（DraftFields），产出待保存的正式数据（InspectionRecord），内存维护，不持久化，刷新后丢失
-- **M4** 访问正式数据（InspectionRecord[]），持久化储存
+- **M1** 产生文本`TranscriptSegment`，单次消息，不予保存
+- **M2** 产生单次结构化数据`ParseResult`，单次消息，不予保存
+- **M3** 编辑当前草稿数据`DraftFields`，产出待保存的正式数据`InspectionRecord`，内存维护，不持久化，刷新后丢失
+- **M4** 访问正式数据`InspectionRecord[]`，持久化储存
 
 ## 项目结构
 
