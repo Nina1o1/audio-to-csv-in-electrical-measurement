@@ -13,3 +13,5 @@ dist
 .certs/
 infrastructure/m1-speech-proxy/*.sqlite*
 infrastructure/m1-speech-proxy/*.env
+.nvmrc
+.env.example
