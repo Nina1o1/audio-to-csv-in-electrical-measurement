@@ -23,7 +23,7 @@ a2301,c-045,12 mΩ,500 MΩ,1500 V
 
 - 前端页面：[Vue](https://cn.vuejs.org/)
 - 构建：[TypeScript](https://www.typescriptlang.org), [Vite](https://vitejs.cn/vite3-cn/)
-- 语音命令：[Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API)
+- 语音命令识别：[Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API)
 - 语音正文识别：[科大讯飞IAT WebSocket API](https://www.xfyun.cn/doc/asr/voicedictation/API.html)
 - 数据管理: [localStorage](https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage)
 - 服务端代理：[Node.js](https://nodejs.org/en)，内置 [SQLite](https://sqlite.org/index.html)
